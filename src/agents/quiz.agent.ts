@@ -1,4 +1,3 @@
-import { chatCompletion } from '../lib/openai';
 import { logger } from '../lib/logger';
 
 interface QuizQuestion {

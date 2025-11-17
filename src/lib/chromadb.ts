@@ -1,44 +1,11 @@
-import { OpenAI } from 'openai';
-
-let openai: OpenAI | null = null;
-
 export async function initChromaDB(): Promise<void> {
-  console.log('ℹ️  ChromaDB desabilitado, usando embeddings in-memory');
-}
-
-export function getOpenAI(): OpenAI {
-  if (!openai) {
-    const apiKey = process.env.OPENAI_API_KEY || 'sk-mock-key';
-    
-    if (apiKey === 'sk-mock-key' || apiKey.startsWith('sk-mock')) {
-      console.warn('⚠️  Usando OpenAI em modo MOCK. Embeddings serão simulados.');
-    }
-    
-    openai = new OpenAI({ apiKey });
-  }
-  return openai;
+  console.log('ℹ️  ChromaDB desabilitado, usando busca SQL');
 }
 
 export async function generateEmbedding(text: string): Promise<number[]> {
-  const openaiClient = getOpenAI();
-  const apiKey = process.env.OPENAI_API_KEY || 'sk-mock-key';
-
-  if (apiKey === 'sk-mock-key' || apiKey.startsWith('sk-mock')) {
-    return generateMockEmbedding(text);
-  }
-
-  try {
-    const response = await openaiClient.embeddings.create({
-      model: 'text-embedding-3-small',
-      input: text,
-    });
-
-    return response.data[0].embedding;
-  } catch (error) {
-    console.error('❌ Erro ao gerar embedding:', error);
-    console.warn('⚠️  Usando embedding mock como fallback');
-    return generateMockEmbedding(text);
-  }
+  // Embeddings desabilitados - retorna array vazio
+  // O sistema vai usar busca SQL como fallback
+  return generateMockEmbedding(text);
 }
 
 function generateMockEmbedding(text: string): number[] {
