@@ -1,50 +1,9 @@
-import { ChromaClient, Collection } from 'chromadb';
 import { OpenAI } from 'openai';
 
-const COLLECTION_NAME = 'vehicles';
-
-let chromaClient: ChromaClient | null = null;
-let collection: Collection | null = null;
 let openai: OpenAI | null = null;
 
 export async function initChromaDB(): Promise<void> {
-  try {
-    const chromaUrl = process.env.CHROMA_URL || 'http://localhost:8000';
-    
-    chromaClient = new ChromaClient({
-      path: chromaUrl,
-    });
-
-    console.log(`🔗 Conectando ao ChromaDB (${chromaUrl})...`);
-    await chromaClient.heartbeat();
-    console.log('✅ ChromaDB conectado!');
-
-    try {
-      collection = await chromaClient.getOrCreateCollection({
-        name: COLLECTION_NAME,
-        metadata: { 'hnsw:space': 'cosine' },
-      });
-      console.log(`✅ Collection "${COLLECTION_NAME}" pronta`);
-    } catch (error) {
-      console.error('❌ Erro ao criar collection:', error);
-      throw error;
-    }
-  } catch (error) {
-    console.warn('⚠️  ChromaDB não disponível. Usando modo in-memory com embeddings mock.');
-    console.log('💡 Para habilitar ChromaDB real:');
-    console.log('   1. Instalar: pip install chromadb');
-    console.log('   2. Rodar: chroma run --path ./chroma_data');
-    chromaClient = null;
-    collection = null;
-  }
-}
-
-export function getChromaClient(): ChromaClient | null {
-  return chromaClient;
-}
-
-export function getCollection(): Collection | null {
-  return collection;
+  console.log('ℹ️  ChromaDB desabilitado, usando embeddings in-memory');
 }
 
 export function getOpenAI(): OpenAI {
@@ -115,19 +74,10 @@ function seededRandom(seed: number): () => number {
 }
 
 export async function isChromaDBAvailable(): Promise<boolean> {
-  if (!chromaClient) return false;
-  
-  try {
-    await chromaClient.heartbeat();
-    return true;
-  } catch {
-    return false;
-  }
+  return false;
 }
 
 export async function closeChromaDB(): Promise<void> {
-  chromaClient = null;
-  collection = null;
   openai = null;
   console.log('🔌 ChromaDB desconectado');
 }
