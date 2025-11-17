@@ -22,6 +22,10 @@
     "postinstall": "prisma generate",
     "test:bot": "tsx src/test-bot.ts",
     "test:guardrails": "tsx src/test-guardrails.ts",
+    "embeddings:generate": "tsx src/scripts/generate-embeddings.ts generate",
+    "embeddings:regenerate": "tsx src/scripts/generate-embeddings.ts regenerate",
+    "embeddings:stats": "tsx src/scripts/generate-embeddings.ts stats",
+    "embeddings:force": "tsx src/scripts/generate-embeddings.ts generate force",
     "heroku-status": "heroku ps --app faciliauto-mvp",
     "heroku-logs": "heroku logs --tail --app faciliauto-mvp",
     "heroku-open": "heroku open --app faciliauto-mvp"
@@ -40,6 +44,7 @@
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "groq-sdk": "^0.35.0",
+    "openai": "^6.9.0",
     "pino": "^8.16.2",
     "zod": "^3.22.4"
   },

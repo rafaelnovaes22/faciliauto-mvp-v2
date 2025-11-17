@@ -1,141 +1,325 @@
 import { PrismaClient } from '@prisma/client';
-import { initChromaDB, getCollection, generateEmbedding, closeChromaDB } from '../lib/chromadb';
+import {
+  generateEmbedding,
+  embeddingToString,
+  getEmbeddingStats,
+  EMBEDDING_MODEL,
+} from '../lib/embeddings';
+import { logger } from '../lib/logger';
 
 const prisma = new PrismaClient();
 
-function buildVehicleDescription(vehicle: any): string {
-  const parts = [
-    `${vehicle.brand} ${vehicle.model} ${vehicle.version || ''}`,
-    `ano ${vehicle.year}`,
-    `${vehicle.mileage.toLocaleString('pt-BR')}km`,
-    `${vehicle.fuelType}`,
-    `${vehicle.transmission}`,
-    `cor ${vehicle.color}`,
-  ];
-
-  if (vehicle.features && vehicle.features.length > 0) {
-    parts.push(`equipamentos: ${vehicle.features.join(', ')}`);
-  }
-
-  if (vehicle.description) {
-    parts.push(vehicle.description);
-  }
-
-  parts.push(`preço R$ ${vehicle.price.toLocaleString('pt-BR')}`);
-
-  return parts.join('. ');
+interface GenerateEmbeddingsOptions {
+  forceRegenerate?: boolean;
+  batchSize?: number;
+  delayMs?: number;
 }
 
-async function generateAndStoreEmbeddings() {
-  console.log('🚀 Iniciando geração de embeddings...\n');
+/**
+ * Gera texto descritivo para o veículo (usado para criar embedding)
+ */
+function buildVehicleDescription(vehicle: any): string {
+  const parts = [
+    vehicle.marca,
+    vehicle.modelo,
+    vehicle.versao || '',
+    `${vehicle.ano}`,
+    vehicle.carroceria,
+    vehicle.combustivel,
+    vehicle.cambio,
+  ];
+
+  const features: string[] = [];
+  if (vehicle.arCondicionado) features.push('ar condicionado');
+  if (vehicle.direcaoHidraulica) features.push('direção hidráulica');
+  if (vehicle.airbag) features.push('airbag');
+  if (vehicle.abs) features.push('ABS');
+  if (vehicle.vidroEletrico) features.push('vidro elétrico');
+  if (vehicle.travaEletrica) features.push('trava elétrica');
+  if (vehicle.alarme) features.push('alarme');
+  if (vehicle.rodaLigaLeve) features.push('roda de liga leve');
+  if (vehicle.som) features.push('som');
+
+  if (features.length > 0) {
+    parts.push(`Equipamentos: ${features.join(', ')}`);
+  }
+
+  if (vehicle.descricao) {
+    parts.push(vehicle.descricao);
+  }
+
+  return parts.filter((p) => p).join(' ');
+}
+
+/**
+ * Gera embeddings para todos os veículos no banco
+ */
+async function generateAllEmbeddings(
+  options: GenerateEmbeddingsOptions = {}
+): Promise<void> {
+  const {
+    forceRegenerate = false,
+    batchSize = 10,
+    delayMs = 1000,
+  } = options;
 
   try {
-    await initChromaDB();
+    console.log('\n🚀 Iniciando geração de embeddings...\n');
 
-    const collection = getCollection();
-    if (!collection) {
-      throw new Error('❌ ChromaDB collection não disponível');
-    }
+    // Buscar veículos
+    const whereClause = forceRegenerate
+      ? {}
+      : {
+          OR: [{ embedding: null }, { embedding: '' }],
+        };
 
     const vehicles = await prisma.vehicle.findMany({
-      where: { available: true },
+      where: whereClause,
     });
 
-    console.log(`📊 Encontrados ${vehicles.length} veículos no banco\n`);
-
     if (vehicles.length === 0) {
-      console.log('⚠️  Nenhum veículo encontrado. Execute o seed primeiro!');
+      console.log('✅ Todos os veículos já possuem embeddings!');
       return;
     }
 
-    const existingCount = await collection.count();
-    if (existingCount > 0) {
-      console.log(`🗑️  Removendo ${existingCount} embeddings antigos...`);
-      const existingIds = (await collection.get()).ids;
-      if (existingIds.length > 0) {
-        await collection.delete({ ids: existingIds });
+    console.log(`📊 Encontrados ${vehicles.length} veículos para processar\n`);
+
+    let processed = 0;
+    let errors = 0;
+
+    // Processar em lotes
+    for (let i = 0; i < vehicles.length; i += batchSize) {
+      const batch = vehicles.slice(i, i + batchSize);
+      console.log(
+        `\n📦 Processando lote ${Math.floor(i / batchSize) + 1}/${Math.ceil(vehicles.length / batchSize)} (${batch.length} veículos)...`
+      );
+
+      for (const vehicle of batch) {
+        try {
+          const description = buildVehicleDescription(vehicle);
+
+          console.log(
+            `\n  🚗 ${vehicle.marca} ${vehicle.modelo} ${vehicle.versao || ''} (${vehicle.ano})`
+          );
+          console.log(`     📝 Descrição: "${description.substring(0, 100)}..."`);
+
+          // Gerar embedding
+          const embedding = await generateEmbedding(description);
+
+          // Estatísticas do embedding
+          const stats = getEmbeddingStats(embedding);
+          console.log(`     📊 Dimensões: ${stats.dimensions}`);
+          console.log(`     📊 Magnitude: ${stats.magnitude}`);
+
+          // Salvar no banco
+          await prisma.vehicle.update({
+            where: { id: vehicle.id },
+            data: {
+              embedding: embeddingToString(embedding),
+              embeddingModel: EMBEDDING_MODEL,
+              embeddingGeneratedAt: new Date(),
+            },
+          });
+
+          processed++;
+          console.log(`     ✅ Embedding salvo com sucesso!`);
+
+          // Delay para evitar rate limit
+          if (i + batch.indexOf(vehicle) + 1 < vehicles.length) {
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+          }
+        } catch (error: any) {
+          errors++;
+          console.error(
+            `     ❌ Erro ao processar ${vehicle.modelo}: ${error.message}`
+          );
+          logger.error(
+            { vehicleId: vehicle.id, error: error.message },
+            'Erro ao gerar embedding'
+          );
+        }
       }
-      console.log('✅ Embeddings antigos removidos\n');
     }
 
-    console.log('🔄 Gerando embeddings...\n');
+    console.log('\n' + '='.repeat(60));
+    console.log('📊 RESUMO DA GERAÇÃO DE EMBEDDINGS');
+    console.log('='.repeat(60));
+    console.log(`✅ Processados com sucesso: ${processed}`);
+    console.log(`❌ Erros: ${errors}`);
+    console.log(`📈 Taxa de sucesso: ${((processed / vehicles.length) * 100).toFixed(1)}%`);
+    console.log('='.repeat(60) + '\n');
 
-    const ids: string[] = [];
-    const embeddings: number[][] = [];
-    const metadatas: any[] = [];
-    const documents: string[] = [];
+    // Verificação final
+    const totalWithEmbeddings = await prisma.vehicle.count({
+      where: {
+        embedding: {
+          not: null,
+        },
+      },
+    });
 
-    for (let i = 0; i < vehicles.length; i++) {
-      const vehicle = vehicles[i];
-      const description = buildVehicleDescription(vehicle);
+    const totalVehicles = await prisma.vehicle.count();
 
-      console.log(`[${i + 1}/${vehicles.length}] ${vehicle.brand} ${vehicle.model}`);
-      console.log(`   📝 "${description.substring(0, 100)}..."`);
+    console.log(`🎯 Total de veículos com embeddings: ${totalWithEmbeddings}/${totalVehicles}`);
 
-      const embedding = await generateEmbedding(description);
-
-      ids.push(vehicle.id);
-      embeddings.push(embedding);
-      documents.push(description);
-      metadatas.push({
-        brand: vehicle.brand,
-        model: vehicle.model,
-        year: vehicle.year.toString(),
-        price: vehicle.price.toString(),
-        mileage: vehicle.mileage.toString(),
-      });
-
-      console.log(`   ✅ Embedding gerado (${embedding.length} dimensões)\n`);
+    if (totalWithEmbeddings === totalVehicles) {
+      console.log('✅ Todos os veículos possuem embeddings!\n');
+    } else {
+      console.log(
+        `⚠️  ${totalVehicles - totalWithEmbeddings} veículos ainda sem embeddings\n`
+      );
     }
-
-    console.log('💾 Salvando no ChromaDB...');
-
-    await collection.add({
-      ids,
-      embeddings,
-      metadatas,
-      documents,
-    });
-
-    console.log(`\n✅ Sucesso! ${vehicles.length} veículos indexados no ChromaDB`);
-
-    console.log('\n📊 Estatísticas:');
-    console.log(`   - Total de veículos: ${vehicles.length}`);
-    console.log(`   - Dimensões: ${embeddings[0]?.length || 0}`);
-    console.log(`   - Collection: vehicles`);
-
-    const testQuery = 'carro econômico para cidade';
-    console.log(`\n🔍 Teste de busca: "${testQuery}"`);
-    const queryEmbedding = await generateEmbedding(testQuery);
-    const results = await collection.query({
-      queryEmbeddings: [queryEmbedding],
-      nResults: 3,
-    });
-
-    console.log('\n🎯 Top 3 resultados:');
-    results.ids[0]?.forEach((id, idx) => {
-      const vehicle = vehicles.find((v) => v.id === id);
-      const distance = results.distances?.[0]?.[idx] || 0;
-      const similarity = Math.round((1 - distance) * 100);
-      console.log(`   ${idx + 1}. ${vehicle?.brand} ${vehicle?.model} (${similarity}% match)`);
-    });
-
-    console.log('\n✨ ChromaDB pronto para uso!');
-  } catch (error) {
-    console.error('\n❌ Erro:', error);
+  } catch (error: any) {
+    console.error('\n❌ Erro fatal:', error.message);
+    logger.error({ error: error.message }, 'Erro fatal ao gerar embeddings');
     throw error;
   } finally {
-    await closeChromaDB();
     await prisma.$disconnect();
   }
 }
 
-generateAndStoreEmbeddings()
-  .then(() => {
-    console.log('\n🎉 Processo concluído!');
+/**
+ * Regenera embedding de um veículo específico
+ */
+async function regenerateVehicleEmbedding(vehicleId: string): Promise<void> {
+  try {
+    const vehicle = await prisma.vehicle.findUnique({
+      where: { id: vehicleId },
+    });
+
+    if (!vehicle) {
+      throw new Error(`Veículo ${vehicleId} não encontrado`);
+    }
+
+    console.log(
+      `\n🔄 Regenerando embedding para ${vehicle.marca} ${vehicle.modelo}...`
+    );
+
+    const description = buildVehicleDescription(vehicle);
+    const embedding = await generateEmbedding(description);
+
+    await prisma.vehicle.update({
+      where: { id: vehicleId },
+      data: {
+        embedding: embeddingToString(embedding),
+        embeddingModel: EMBEDDING_MODEL,
+        embeddingGeneratedAt: new Date(),
+      },
+    });
+
+    console.log('✅ Embedding regenerado com sucesso!\n');
+  } catch (error: any) {
+    console.error(`❌ Erro: ${error.message}`);
+    throw error;
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+/**
+ * Estatísticas de embeddings no banco
+ */
+async function showEmbeddingStats(): Promise<void> {
+  try {
+    const total = await prisma.vehicle.count();
+    const withEmbeddings = await prisma.vehicle.count({
+      where: {
+        embedding: {
+          not: null,
+        },
+      },
+    });
+
+    const byModel = await prisma.vehicle.groupBy({
+      by: ['embeddingModel'],
+      _count: true,
+    });
+
+    console.log('\n📊 ESTATÍSTICAS DE EMBEDDINGS');
+    console.log('='.repeat(60));
+    console.log(`Total de veículos: ${total}`);
+    console.log(`Com embeddings: ${withEmbeddings} (${((withEmbeddings / total) * 100).toFixed(1)}%)`);
+    console.log(`Sem embeddings: ${total - withEmbeddings}`);
+    console.log('\nModelos de embedding:');
+    byModel.forEach((group) => {
+      console.log(`  - ${group.embeddingModel || 'null'}: ${group._count} veículos`);
+    });
+    console.log('='.repeat(60) + '\n');
+  } catch (error: any) {
+    console.error(`❌ Erro: ${error.message}`);
+    throw error;
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+// CLI
+const command = process.argv[2];
+const arg = process.argv[3];
+
+if (!command || command === 'help') {
+  console.log(`
+📝 USO:
+  
+  Gerar embeddings para todos os veículos:
+    tsx src/scripts/generate-embeddings.ts generate
+    
+  Forçar regeneração de todos:
+    tsx src/scripts/generate-embeddings.ts generate force
+    
+  Regenerar um veículo específico:
+    tsx src/scripts/generate-embeddings.ts regenerate <vehicleId>
+    
+  Ver estatísticas:
+    tsx src/scripts/generate-embeddings.ts stats
+
+💡 DICA: Configure OPENAI_API_KEY no .env antes de executar
+  `);
+  process.exit(0);
+}
+
+(async () => {
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      console.error(
+        '\n❌ ERRO: OPENAI_API_KEY não configurada no .env\n'
+      );
+      console.log('💡 Configure sua chave de API:');
+      console.log('   1. Obtenha em: https://platform.openai.com/api-keys');
+      console.log('   2. Adicione no .env: OPENAI_API_KEY=sk-...\n');
+      process.exit(1);
+    }
+
+    switch (command) {
+      case 'generate':
+        await generateAllEmbeddings({
+          forceRegenerate: arg === 'force',
+          batchSize: 10,
+          delayMs: 1000,
+        });
+        break;
+
+      case 'regenerate':
+        if (!arg) {
+          console.error('\n❌ Uso: tsx src/scripts/generate-embeddings.ts regenerate <vehicleId>\n');
+          process.exit(1);
+        }
+        await regenerateVehicleEmbedding(arg);
+        break;
+
+      case 'stats':
+        await showEmbeddingStats();
+        break;
+
+      default:
+        console.error(`\n❌ Comando desconhecido: ${command}\n`);
+        console.log('Use "help" para ver os comandos disponíveis\n');
+        process.exit(1);
+    }
+
     process.exit(0);
-  })
-  .catch((error) => {
-    console.error('\n💥 Erro fatal:', error);
+  } catch (error: any) {
+    console.error(`\n❌ Erro fatal: ${error.message}\n`);
     process.exit(1);
-  });
+  }
+})();
