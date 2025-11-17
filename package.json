@@ -35,7 +35,6 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@hapi/boom": "^10.0.1",
     "@prisma/client": "^5.7.0",
     "axios": "^1.13.2",
     "dotenv": "^16.3.1",
@@ -43,7 +42,6 @@
     "groq-sdk": "^0.35.0",
     "openai": "^4.104.0",
     "pino": "^8.16.2",
-    "pino-pretty": "^10.3.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
