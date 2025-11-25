@@ -141,14 +141,36 @@ export class MessageHandler {
   }
 
   private async handleGreeting(conversation: any, message: string, context: any): Promise<string> {
-    // Always send greeting and start quiz
-    // Update to quiz step
+    // Check if we already asked for name
+    if (!context.askedName) {
+      context.askedName = true;
+      
+      // Save context to cache
+      const contextKey = `conversation:${conversation.id}:context`;
+      await cache.set(contextKey, JSON.stringify(context), 86400);
+      
+      // Ask for name
+      return `Olá! 👋 Bem-vindo à *FaciliAuto*!
+
+Sou seu assistente virtual e estou aqui para ajudar você a encontrar o carro usado perfeito! 🚗
+
+Para começar, qual é o seu nome?`;
+    }
+    
+    // User provided their name
+    const userName = message.trim();
+    
+    // Save name in conversation
     await prisma.conversation.update({
       where: { id: conversation.id },
-      data: { currentStep: 'quiz' },
+      data: { 
+        customerName: userName,
+        currentStep: 'quiz' 
+      },
     });
-
-    // Initialize quiz context
+    
+    // Save name in context
+    context.userName = userName;
     context.quizProgress = 0;
     context.quizAnswers = {};
     
@@ -156,16 +178,18 @@ export class MessageHandler {
     const contextKey = `conversation:${conversation.id}:context`;
     await cache.set(contextKey, JSON.stringify(context), 86400);
     
-    // Return greeting + first question
-    return `Olá! 👋 Bem-vindo à FaciliAuto!
+    // Start quiz with personalized greeting
+    return `Prazer em conhecer você, *${userName}*! 😊
 
-Sou seu assistente virtual e estou aqui para ajudar você a encontrar o carro usado perfeito.
+Vou fazer algumas perguntas rápidas para encontrar o carro ideal para você. 🎯
 
-Perfeito! Vou fazer algumas perguntas rápidas para encontrar o carro ideal para você. 🎯
+São apenas *8 perguntas* e leva menos de 2 minutos!
 
-São apenas 8 perguntas e leva menos de 2 minutos!
+Vamos começar?
 
-💰 Qual seu orçamento disponível para o carro?
+💰 *Pergunta 1 de 8*
+
+Qual seu orçamento disponível para o carro?
 
 _Exemplo: 50000 ou 50 mil_`;
 
