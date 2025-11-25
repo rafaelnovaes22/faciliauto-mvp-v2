@@ -440,8 +440,11 @@ Digite *"recomeçar"* para iniciar do zero.`;
     });
 
     message += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
-    message += `Gostou de algum? Digite "vendedor" para falar com nossa equipe e fechar negócio! 🤝\n\n`;
-    message += `Ou digite "agendar" para marcar test-drive. 📅`;
+    message += `📌 *Próximos passos:*\n\n`;
+    message += `💬 Digite "vendedor" para falar com nossa equipe\n`;
+    message += `📅 Digite "agendar" para marcar test-drive\n`;
+    message += `🔄 Digite "recomeçar" para nova busca\n`;
+    message += `🚪 Digite "sair" para encerrar`;
 
     return message;
   }
