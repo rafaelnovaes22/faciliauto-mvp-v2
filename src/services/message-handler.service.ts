@@ -341,17 +341,18 @@ _Exemplo: 50000 ou 50 mil_`;
     recommendations.forEach((rec, index) => {
       const vehicle = rec.vehicle;
       message += `━━━━━━━━━━━━━━━━━━━━━\n`;
-      message += `${index + 1}️⃣ Match Score: ${rec.matchScore}/100 ⭐\n\n`;
-      message += `🚗 ${vehicle.marca} ${vehicle.modelo} ${vehicle.versao || ''}\n`;
-      message += `📅 Ano: ${vehicle.ano} | 🛣️ ${vehicle.km.toLocaleString('pt-BR')} km\n`;
-      message += `💰 R$ ${parseFloat(vehicle.preco).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
-      message += `🎨 Cor: ${vehicle.cor}\n\n`;
-      message += `💡 ${rec.reasoning}\n\n`;
+      message += `*${index + 1}️⃣ ${vehicle.marca} ${vehicle.modelo}*\n`;
+      message += `Match: ${rec.matchScore}/100 ⭐\n\n`;
+      message += `📅 ${vehicle.ano} | 🛣️ ${vehicle.km.toLocaleString('pt-BR')} km\n`;
+      message += `💰 *R$ ${parseFloat(vehicle.preco).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}*\n`;
+      message += `🎨 ${vehicle.cor}\n\n`;
       
-      // Adicionar link do veículo se existir
+      // Link SEMPRE primeiro, bem destacado
       if (vehicle.url) {
-        message += `🔗 Ver detalhes: ${vehicle.url}\n\n`;
+        message += `🔗 *Ver fotos e detalhes:*\n${vehicle.url}\n\n`;
       }
+      
+      message += `${rec.reasoning}\n\n`;
     });
 
     message += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
