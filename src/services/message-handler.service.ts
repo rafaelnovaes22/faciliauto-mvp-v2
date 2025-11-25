@@ -305,11 +305,59 @@ _Exemplo: 50000 ou 50 mil_`;
     // Handle user response to recommendations
     const lowerMessage = message.toLowerCase();
 
-    if (lowerMessage.includes('mais') || lowerMessage.includes('outro')) {
-      return 'No momento, mostrei as 3 melhores opções baseadas no seu perfil.\n\nGostaria de:\n\n1️⃣ Ver detalhes de algum veículo específico\n2️⃣ Agendar uma visita\n3️⃣ Falar com um vendedor\n\nDigite o número da opção.';
+    // Check for exit/reset commands
+    if (lowerMessage.includes('sair') || lowerMessage.includes('encerrar') || lowerMessage.includes('tchau')) {
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { 
+          status: 'closed',
+          currentStep: 'closed'
+        },
+      });
+
+      await prisma.event.create({
+        data: {
+          conversationId: conversation.id,
+          eventType: 'conversation_closed',
+        },
+      });
+
+      return `Obrigado por usar a FaciliAuto! 👋
+
+Foi um prazer ajudar você.
+
+Se precisar de algo, é só enviar uma mensagem novamente que estarei aqui! 😊
+
+Até logo! 🚗`;
     }
 
-    if (lowerMessage.includes('visita') || lowerMessage.includes('agendar')) {
+    if (lowerMessage.includes('recomeçar') || lowerMessage.includes('reiniciar') || lowerMessage.includes('nova busca')) {
+      // Reset conversation
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { 
+          status: 'closed',
+          currentStep: 'closed'
+        },
+      });
+
+      await prisma.event.create({
+        data: {
+          conversationId: conversation.id,
+          eventType: 'conversation_reset',
+        },
+      });
+
+      return `Tudo bem! Vou resetar nossa conversa. ♻️
+
+Envie *"oi"* novamente para começarmos uma nova busca do zero!`;
+    }
+
+    if (lowerMessage.includes('mais') || lowerMessage.includes('outro')) {
+      return 'No momento, mostrei as 3 melhores opções baseadas no seu perfil.\n\nGostaria de:\n\n1️⃣ Agendar uma visita\n2️⃣ Falar com um vendedor\n3️⃣ Fazer nova busca\n4️⃣ Encerrar\n\nDigite o número da opção.';
+    }
+
+    if (lowerMessage.includes('visita') || lowerMessage.includes('agendar') || lowerMessage === '1') {
       await prisma.event.create({
         data: {
           conversationId: conversation.id,
@@ -320,10 +368,46 @@ _Exemplo: 50000 ou 50 mil_`;
       // Create lead
       await this.createLead(conversation);
 
-      return `Ótimo! 🎉\n\nVou transferir você para nossa equipe de vendas para agendar sua visita.\n\nUm vendedor entrará em contato em breve.\n\nObrigado por escolher a FaciliAuto!`;
+      return `Ótimo! 🎉
+
+Vou transferir você para nossa equipe de vendas para agendar sua visita.
+
+Um vendedor entrará em contato em breve via WhatsApp.
+
+Obrigado por escolher a FaciliAuto!
+
+_Digite "sair" para encerrar ou "recomeçar" para nova busca_`;
     }
 
-    return `Entendi! Como posso ajudar mais?\n\n• Digite o número do carro para ver mais detalhes\n• Digite "agendar" para marcar uma visita\n• Digite "vendedor" para falar com nossa equipe`;
+    if (lowerMessage.includes('vendedor') || lowerMessage === '2') {
+      await this.createLead(conversation);
+
+      return `Perfeito! 👨‍💼
+
+Nossa equipe de vendas foi notificada e entrará em contato com você em breve pelo WhatsApp.
+
+Enquanto isso, sinta-se à vontade para acessar os links dos veículos!
+
+_Digite "sair" para encerrar ou "recomeçar" para nova busca_`;
+    }
+
+    if (lowerMessage === '3') {
+      return `Vamos fazer uma nova busca! ♻️
+
+Digite *"recomeçar"* para iniciar do zero.`;
+    }
+
+    if (lowerMessage === '4') {
+      return await this.handleRecommendation(conversation, 'sair', context);
+    }
+
+    return `Entendi! Como posso ajudar mais?
+
+💬 *Opções:*
+• *"agendar"* - Marcar visita
+• *"vendedor"* - Falar com equipe
+• *"recomeçar"* - Nova busca
+• *"sair"* - Encerrar conversa`;
   }
 
   private async handleGeneral(conversation: any, message: string, context: any): Promise<string> {
