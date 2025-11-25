@@ -141,7 +141,36 @@ export class MessageHandler {
   }
 
   private async handleGreeting(conversation: any, message: string, context: any): Promise<string> {
-    // Identify intent
+    // Check if this is the FIRST message (no previous messages)
+    const messageCount = await prisma.message.count({
+      where: { conversationId: conversation.id }
+    });
+
+    // If first message, send greeting and start quiz
+    if (messageCount <= 1) {
+      // Update to quiz step
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { currentStep: 'quiz' },
+      });
+
+      // Initialize quiz context
+      context.quizProgress = 0;
+      context.quizAnswers = {};
+      
+      // Return greeting + first question
+      const greetingMessage = `Olá! 👋 Bem-vindo à FaciliAuto!
+
+Sou seu assistente virtual e estou aqui para ajudar você a encontrar o carro usado perfeito.
+
+🚗 Vamos começar! Vou fazer algumas perguntas para entender suas necessidades.
+
+${await this.quizAgent.getQuestion(0)}`;
+
+      return greetingMessage;
+    }
+
+    // For subsequent messages, identify intent
     const intent = await this.orchestrator.identifyIntent(message);
 
     logger.debug({ intent, conversationId: conversation.id }, 'Intent identified');
