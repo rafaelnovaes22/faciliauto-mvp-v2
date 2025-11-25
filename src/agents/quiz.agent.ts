@@ -132,10 +132,18 @@ export class QuizAgent {
         return { valid: true, value: question.options![optionIndex] };
       }
 
-      // Check if answer matches an option
-      const matchedOption = question.options?.find(opt => 
-        cleanAnswer.includes(opt.toLowerCase())
-      );
+      // Check if answer matches an option (flexible matching)
+      const matchedOption = question.options?.find(opt => {
+        const optLower = opt.toLowerCase();
+        // Direct match
+        if (cleanAnswer.includes(optLower)) return true;
+        // Match for urgency question
+        if (optLower === '3meses' && (cleanAnswer.includes('3') && cleanAnswer.includes('mes'))) return true;
+        if (optLower === '1mes' && (cleanAnswer.includes('1') && cleanAnswer.includes('mes'))) return true;
+        if (optLower === 'urgente' && (cleanAnswer.includes('urgent') || cleanAnswer.includes('semana'))) return true;
+        if (optLower === 'pesquisando' && (cleanAnswer.includes('pesquis') || cleanAnswer.includes('olhando'))) return true;
+        return false;
+      });
 
       if (matchedOption) {
         return { valid: true, value: matchedOption };
@@ -143,7 +151,7 @@ export class QuizAgent {
 
       return {
         valid: false,
-        error: '❌ Opção inválida. Por favor, escolha uma das opções acima.',
+        error: `❌ Opção inválida. Por favor, *escolha uma das opções digitando o número* (1, 2, 3 ou 4).`,
       };
     }
 
