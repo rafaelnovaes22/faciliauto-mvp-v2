@@ -157,17 +157,8 @@ export class MessageHandler {
       const contextKey = `conversation:${conversation.id}:context`;
       await cache.set(contextKey, JSON.stringify(context), 86400);
       
-      // Return greeting + first question
-      const firstQuestion = await this.quizAgent.getQuestion(0);
-      const greetingMessage = `Olá! 👋 Bem-vindo à FaciliAuto!
-
-Sou seu assistente virtual e estou aqui para ajudar você a encontrar o carro usado perfeito.
-
-🚗 Vamos começar! Vou fazer algumas perguntas para entender suas necessidades.
-
-${firstQuestion}`;
-
-      return greetingMessage;
+      // Return greeting + first question using the quiz agent's welcome message
+      return this.quizAgent.getWelcomeMessage();
     }
 
     // For subsequent messages, identify intent
