@@ -5,6 +5,7 @@ import { logger } from './lib/logger';
 import { prisma } from './lib/prisma';
 import { inMemoryVectorStore } from './services/in-memory-vector.service';
 import webhookRoutes from './routes/webhook.routes';
+import adminRoutes from './routes/admin.routes';
 // import WhatsAppService from './services/whatsapp.service'; // Baileys (legacy)
 // import WhatsAppVenomService from './services/whatsapp-venom.service'; // Venom-Bot (commented)
 
@@ -15,6 +16,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Webhook routes for Meta Cloud API
 app.use('/webhooks', webhookRoutes);
+
+// Admin routes (seed, management)
+app.use('/admin', adminRoutes);
 
 // Dashboard
 app.get('/', (req, res) => {
@@ -126,6 +130,7 @@ async function start() {
       logger.info(`📊 Stats: http://localhost:${PORT}/stats`);
       logger.info(`📊 Health: http://localhost:${PORT}/health`);
       logger.info(`📱 Webhook: http://localhost:${PORT}/webhooks/whatsapp`);
+      logger.info(`🔧 Admin: http://localhost:${PORT}/admin/health`);
       
       // Check if Meta Cloud API is configured
       if (env.META_WHATSAPP_TOKEN && env.META_WHATSAPP_PHONE_NUMBER_ID) {
