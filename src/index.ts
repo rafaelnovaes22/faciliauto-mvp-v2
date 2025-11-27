@@ -6,6 +6,7 @@ import { prisma } from './lib/prisma';
 import { inMemoryVectorStore } from './services/in-memory-vector.service';
 import webhookRoutes from './routes/webhook.routes';
 import adminRoutes from './routes/admin.routes';
+import debugRoutes from './routes/debug.routes';
 // import WhatsAppService from './services/whatsapp.service'; // Baileys (legacy)
 // import WhatsAppVenomService from './services/whatsapp-venom.service'; // Venom-Bot (commented)
 
@@ -19,6 +20,9 @@ app.use('/webhooks', webhookRoutes);
 
 // Admin routes (seed, management)
 app.use('/admin', adminRoutes);
+
+// Debug routes (feature flags, config)
+app.use('/debug', debugRoutes);
 
 // Dashboard
 app.get('/', (req, res) => {
