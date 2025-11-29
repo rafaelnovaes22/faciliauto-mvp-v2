@@ -21,55 +21,55 @@ function requireSecret(req: any, res: any, next: Function) {
 
 router.get('/seed-robustcar', async (req, res) => {
   const { secret } = req.query;
-  
+
   // Validação de autenticação
   if (secret !== SEED_SECRET) {
     logger.warn('Tentativa de acesso não autorizado ao endpoint de seed');
-    return res.status(403).json({ 
+    return res.status(403).json({
       success: false,
-      error: 'Unauthorized - Invalid secret' 
+      error: 'Unauthorized - Invalid secret'
     });
   }
-  
+
   try {
     logger.info('🚀 Seed Robust Car iniciado via HTTP endpoint');
-    
+
     // Verificar se arquivo existe
     const { existsSync } = await import('fs');
     const { join } = await import('path');
     const jsonPath = join(process.cwd(), 'scripts', 'robustcar-vehicles.json');
-    
+
     if (!existsSync(jsonPath)) {
       throw new Error(`Arquivo não encontrado: ${jsonPath}`);
     }
-    
+
     logger.info(`✅ Arquivo encontrado: ${jsonPath}`);
-    
+
     // Executar seed
     logger.info('📦 Populando banco de dados...');
-    const seedOutput = execSync('npx tsx prisma/seed-robustcar.ts', { 
+    const seedOutput = execSync('npx tsx prisma/seed-robustcar.ts', {
       cwd: process.cwd(),
       env: process.env,
       encoding: 'utf-8',
       maxBuffer: 10 * 1024 * 1024 // 10MB buffer
     });
-    
+
     logger.info('Seed output:', seedOutput);
-    
+
     // Executar geração de embeddings
     logger.info('🔄 Gerando embeddings OpenAI...');
-    const embeddingsOutput = execSync('npx tsx src/scripts/generate-embeddings.ts generate', { 
+    const embeddingsOutput = execSync('npx tsx src/scripts/generate-embeddings.ts generate', {
       cwd: process.cwd(),
       env: process.env,
       encoding: 'utf-8',
       maxBuffer: 10 * 1024 * 1024
     });
-    
+
     logger.info('Embeddings output:', embeddingsOutput);
-    
+
     logger.info('✅ Seed e embeddings concluídos com sucesso!');
-    
-    res.json({ 
+
+    res.json({
       success: true,
       message: '✅ Seed e embeddings executados com sucesso!',
       seedOutput: seedOutput.split('\n').slice(-10).join('\n'), // Últimas 10 linhas
@@ -78,7 +78,7 @@ router.get('/seed-robustcar', async (req, res) => {
     });
   } catch (error: any) {
     logger.error({ error }, '❌ Erro ao executar seed');
-    
+
     const errorDetails = {
       message: error.message,
       stderr: error.stderr?.toString(),
@@ -86,9 +86,9 @@ router.get('/seed-robustcar', async (req, res) => {
       code: error.code,
       cmd: error.cmd
     };
-    
-    res.status(500).json({ 
-      success: false, 
+
+    res.status(500).json({
+      success: false,
       error: error.message,
       details: errorDetails,
       help: 'Verifique: 1) Arquivo robustcar-vehicles.json existe, 2) DATABASE_URL configurado, 3) OPENAI_API_KEY configurado'
@@ -103,21 +103,21 @@ router.get('/seed-robustcar', async (req, res) => {
 router.post('/schema-push', requireSecret, async (req, res) => {
   try {
     logger.info('🔧 Admin: Applying Prisma schema...');
-    
+
     const output = execSync('npx prisma db push --accept-data-loss --skip-generate', {
       encoding: 'utf-8',
       env: { ...process.env },
       maxBuffer: 10 * 1024 * 1024
     });
-    
+
     logger.info('✅ Admin: Schema applied successfully');
-    
+
     res.json({
       success: true,
       message: 'Schema applied successfully',
       output: output.substring(output.length - 500) // Last 500 chars
     });
-    
+
   } catch (error: any) {
     logger.error({ error }, '❌ Admin: Schema push failed');
     res.status(500).json({
@@ -170,11 +170,11 @@ function isInWhitelist(marca: string, modelo: string, whitelist: any): boolean {
 router.post('/update-uber', requireSecret, async (req, res) => {
   // Check if should use LLM validation (new method)
   const useLLM = req.query.llm === 'true' || req.body.useLLM === true;
-  
+
   if (useLLM) {
     return updateUberWithLLM(req, res);
   }
-  
+
   // Legacy whitelist method (keeping for comparison)
   return updateUberWithWhitelist(req, res);
 });
@@ -185,15 +185,15 @@ router.post('/update-uber', requireSecret, async (req, res) => {
 async function updateUberWithLLM(req: any, res: any) {
   try {
     logger.info('🚖 Admin: Updating Uber eligibility with LLM...');
-    
+
     const { uberEligibilityValidator } = await import('../services/uber-eligibility-validator.service');
     const vehicles = await prisma.vehicle.findMany();
-    
+
     let uberXCount = 0;
     let uberComfortCount = 0;
     let uberBlackCount = 0;
     const results: any[] = [];
-    
+
     for (const vehicle of vehicles) {
       const eligibility = await uberEligibilityValidator.validateEligibility({
         marca: vehicle.marca,
@@ -205,7 +205,7 @@ async function updateUberWithLLM(req: any, res: any) {
         cambio: vehicle.cambio,
         cor: vehicle.cor
       });
-      
+
       await prisma.vehicle.update({
         where: { id: vehicle.id },
         data: {
@@ -213,11 +213,11 @@ async function updateUberWithLLM(req: any, res: any) {
           aptoUberBlack: eligibility.uberBlack
         }
       });
-      
+
       if (eligibility.uberX) uberXCount++;
       if (eligibility.uberComfort) uberComfortCount++;
       if (eligibility.uberBlack) uberBlackCount++;
-      
+
       if (eligibility.uberX || eligibility.uberComfort || eligibility.uberBlack) {
         results.push({
           marca: vehicle.marca,
@@ -231,9 +231,9 @@ async function updateUberWithLLM(req: any, res: any) {
         });
       }
     }
-    
+
     logger.info({ uberXCount, uberComfortCount, uberBlackCount }, '✅ Admin: Uber eligibility updated (LLM)');
-    
+
     res.json({
       success: true,
       message: 'Uber eligibility updated (LLM validation)',
@@ -246,7 +246,7 @@ async function updateUberWithLLM(req: any, res: any) {
       },
       results: results.slice(0, 10)
     });
-    
+
   } catch (error: any) {
     logger.error({ error }, '❌ Admin: Update Uber eligibility with LLM failed');
     res.status(500).json({
@@ -258,60 +258,97 @@ async function updateUberWithLLM(req: any, res: any) {
 }
 
 /**
- * Legacy: Update with whitelist (keeping for comparison)
+ * Update Uber eligibility based on official requirements (sem whitelist)
+ * 
+ * CRITÉRIOS UBER/99 OFICIAIS:
+ * 
+ * Uber X / 99Pop:
+ * - Ano: 2012 ou mais recente
+ * - 4 portas
+ * - Ar condicionado funcionando
+ * - Sedan, Hatch ou Minivan (Spin, etc)
+ * 
+ * Uber Comfort / 99TOP:
+ * - Ano: 2015 ou mais recente
+ * - Sedan médio/grande
+ * - Espaço interno generoso
+ * 
+ * Uber Black:
+ * - Ano: 2018 ou mais recente
+ * - Sedan executivo/premium
+ * - Ar condicionado
+ * - Preferencialmente cor escura
  */
 async function updateUberWithWhitelist(req: any, res: any) {
   try {
-    logger.info('🚖 Admin: Updating Uber eligibility (whitelist mode)...');
-    
+    logger.info('🚖 Admin: Updating Uber eligibility (critérios oficiais)...');
+
     const vehicles = await prisma.vehicle.findMany();
-    
+
     let uberXCount = 0;
+    let uberComfortCount = 0;
     let uberBlackCount = 0;
     let familiaCount = 0;
     let trabalhoCount = 0;
     const uberVehicles: any[] = [];
     const rejectedVehicles: any[] = [];
-    
+
+    // Tipos NUNCA permitidos para apps
+    const neverAllowed = ['pickup', 'picape', 'caminhonete', 'utilitario', 'furgao'];
+
+    // Carrocerias aceitas para Uber X
+    const uberXBodyTypes = ['sedan', 'hatch', 'hatchback', 'minivan', 'monovolume'];
+
+    // Carrocerias aceitas para Uber Black (apenas sedans)
+    const uberBlackBodyTypes = ['sedan'];
+
     for (const vehicle of vehicles) {
       const carrNorm = normalizeStr(vehicle.carroceria);
-      const isNeverAllowed = NEVER_ALLOWED_TYPES.some(type => carrNorm.includes(type));
-      
-      // Uber X / 99Pop (com whitelist)
+      const isNeverAllowed = neverAllowed.some(type => carrNorm.includes(type));
+      const isUberXBodyType = uberXBodyTypes.some(type => carrNorm.includes(type));
+      const isUberBlackBodyType = uberBlackBodyTypes.some(type => carrNorm.includes(type));
+
+      // Uber X / 99Pop - Critérios oficiais (SEM whitelist)
       const isUberX = !isNeverAllowed &&
         vehicle.ano >= 2012 &&
         vehicle.arCondicionado === true &&
         vehicle.portas >= 4 &&
-        isInWhitelist(vehicle.marca, vehicle.modelo, UBER_X_MODELS);
-      
-      // Uber Black (whitelist rigorosa)
+        isUberXBodyType;
+
+      // Uber Comfort / 99TOP
+      const isUberComfort = !isNeverAllowed &&
+        vehicle.ano >= 2015 &&
+        vehicle.arCondicionado === true &&
+        vehicle.portas >= 4 &&
+        (carrNorm.includes('sedan') || carrNorm.includes('minivan'));
+
+      // Uber Black - Critérios oficiais (SEM whitelist)
       const isUberBlack = !isNeverAllowed &&
         vehicle.ano >= 2018 &&
         vehicle.arCondicionado === true &&
         vehicle.portas === 4 &&
-        carrNorm.includes('sedan') &&
-        isInWhitelist(vehicle.marca, vehicle.modelo, UBER_BLACK_MODELS);
-      
+        isUberBlackBodyType;
+
       // Fuel economy
       let economiaCombustivel = 'media';
-      if (vehicle.carroceria.toLowerCase().includes('hatch') || vehicle.km < 50000) {
+      if (carrNorm.includes('hatch') || vehicle.km < 50000) {
         economiaCombustivel = 'alta';
-      } else if (vehicle.carroceria.toLowerCase().includes('suv') || vehicle.km > 150000) {
+      } else if (carrNorm.includes('suv') || vehicle.km > 150000) {
         economiaCombustivel = 'baixa';
       }
-      
+
       // Family-friendly
-      const aptoFamilia = 
+      const aptoFamilia =
         vehicle.portas >= 4 &&
-        (vehicle.carroceria.toLowerCase().includes('suv') ||
-         vehicle.carroceria.toLowerCase().includes('sedan') ||
-         vehicle.carroceria.toLowerCase().includes('minivan'));
-      
+        (carrNorm.includes('suv') ||
+          carrNorm.includes('sedan') ||
+          carrNorm.includes('minivan'));
+
       // Work-suitable
-      const aptoTrabalho = 
+      const aptoTrabalho =
         economiaCombustivel !== 'baixa' &&
         vehicle.arCondicionado === true;
-      
+
       // Update
       await prisma.vehicle.update({
         where: { id: vehicle.id },
@@ -323,42 +360,47 @@ async function updateUberWithWhitelist(req: any, res: any) {
           aptoTrabalho
         }
       });
-      
+
       if (isUberX) uberXCount++;
+      if (isUberComfort) uberComfortCount++;
       if (isUberBlack) uberBlackCount++;
       if (aptoFamilia) familiaCount++;
       if (aptoTrabalho) trabalhoCount++;
-      
+
       if (isUberX || isUberBlack) {
         uberVehicles.push({
           marca: vehicle.marca,
           modelo: vehicle.modelo,
           ano: vehicle.ano,
+          carroceria: vehicle.carroceria,
           preco: vehicle.preco,
           uberX: isUberX,
+          uberComfort: isUberComfort,
           uberBlack: isUberBlack
         });
       } else if (!isNeverAllowed && vehicle.ano >= 2012 && vehicle.arCondicionado && vehicle.portas >= 4) {
-        // Log vehicles that meet basic criteria but not in whitelist
+        // Log vehicles that meet basic criteria but wrong body type
         rejectedVehicles.push({
           marca: vehicle.marca,
           modelo: vehicle.modelo,
           ano: vehicle.ano,
-          reason: 'Not in whitelist'
+          carroceria: vehicle.carroceria,
+          reason: `Carroceria "${vehicle.carroceria}" não aceita para apps`
         });
       }
     }
-    
+
     const summary = {
       totalVehicles: vehicles.length,
       uberX: uberXCount,
+      uberComfort: uberComfortCount,
       uberBlack: uberBlackCount,
       familia: familiaCount,
       trabalho: trabalhoCount
     };
-    
+
     logger.info({ summary }, '✅ Admin: Uber eligibility updated');
-    
+
     res.json({
       success: true,
       message: 'Uber eligibility updated (whitelist mode)',
@@ -366,7 +408,7 @@ async function updateUberWithWhitelist(req: any, res: any) {
       uberVehicles: uberVehicles.slice(0, 10), // First 10
       rejectedVehicles: rejectedVehicles.slice(0, 5) // Show some rejected
     });
-    
+
   } catch (error: any) {
     logger.error({ error }, '❌ Admin: Update Uber eligibility failed');
     res.status(500).json({
@@ -384,14 +426,14 @@ async function updateUberWithWhitelist(req: any, res: any) {
 router.get('/vehicles-uber', requireSecret, async (req, res) => {
   try {
     const type = req.query.type as string; // 'x' or 'black'
-    
+
     const where: any = {};
     if (type === 'black') {
       where.aptoUberBlack = true;
     } else {
       where.aptoUber = true;
     }
-    
+
     const vehicles = await prisma.vehicle.findMany({
       where,
       select: {
@@ -407,14 +449,14 @@ router.get('/vehicles-uber', requireSecret, async (req, res) => {
       },
       orderBy: { preco: 'asc' }
     });
-    
+
     res.json({
       success: true,
       count: vehicles.length,
       type: type || 'x',
       vehicles
     });
-    
+
   } catch (error: any) {
     logger.error({ error }, '❌ Admin: List Uber vehicles failed');
     res.status(500).json({
@@ -442,24 +484,24 @@ router.get('/health', (req, res) => {
 // Endpoint de debug (verificar ambiente)
 router.get('/debug-env', async (req, res) => {
   const { secret } = req.query;
-  
+
   if (secret !== SEED_SECRET) {
     return res.status(403).json({ error: 'Unauthorized' });
   }
-  
+
   try {
     const { existsSync } = await import('fs');
     const { join } = await import('path');
     const { execSync } = await import('child_process');
-    
+
     const cwd = process.cwd();
     const jsonPath = join(cwd, 'scripts', 'robustcar-vehicles.json');
     const seedPath = join(cwd, 'prisma', 'seed-robustcar.ts');
-    
+
     // Listar arquivos
     const scriptsFiles = execSync('ls -la scripts/', { cwd, encoding: 'utf-8' });
     const prismaFiles = execSync('ls -la prisma/', { cwd, encoding: 'utf-8' });
-    
+
     res.json({
       cwd,
       paths: {
