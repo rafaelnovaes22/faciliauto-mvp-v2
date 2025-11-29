@@ -136,75 +136,31 @@ Temos 20 SUVs e 16 sedans no estoque. Para que você pretende usar o carro?"`;
         extracted.extracted
       );
 
-      // 2.5. Check if we offered suggestions and user is responding
+      // 2.5. Check if we offered to ask questions for suggestions and user is responding
       const wasWaitingForSuggestionResponse = context.profile?._waitingForSuggestionResponse;
       if (wasWaitingForSuggestionResponse) {
         const userAccepts = this.detectAffirmativeResponse(userMessage);
         
         if (userAccepts) {
-          logger.info({ userMessage, searchedItem: context.profile?._searchedItem }, 'User accepted suggestions');
+          logger.info({ userMessage, searchedItem: context.profile?._searchedItem }, 'User accepted to answer questions for suggestions');
           
-          // Build search query based on what was originally searched
-          const searchedItem = context.profile?._searchedItem || '';
-          const wasPickup = updatedProfile.bodyType === 'pickup' || 
-            searchedItem.toLowerCase().includes('pickup') || 
-            searchedItem.toLowerCase().includes('picape') ||
-            searchedItem.toLowerCase().includes('strada') ||
-            searchedItem.toLowerCase().includes('s10') ||
-            searchedItem.toLowerCase().includes('hilux');
-          
-          // Search for alternatives based on context
-          let searchQuery = 'carro usado popular';
-          if (wasPickup) {
-            searchQuery = 'suv utilitário espaço carga';
-          } else if (updatedProfile.bodyType) {
-            searchQuery = updatedProfile.bodyType;
-          }
-          
-          const alternatives = await vehicleSearchAdapter.search(searchQuery, {
-            maxPrice: updatedProfile.budget,
-            minYear: updatedProfile.minYear,
-            limit: 5,
-          });
-          
-          if (alternatives.length > 0) {
-            const formattedResponse = await this.formatRecommendations(
-              alternatives,
-              updatedProfile,
-              context
-            );
-            
-            return {
-              response: `Ótimo! Aqui estão algumas opções que podem te interessar:\n\n${formattedResponse}`,
-              extractedPreferences: { ...extracted.extracted, _waitingForSuggestionResponse: false, _searchedItem: undefined },
-              needsMoreInfo: [],
-              canRecommend: true,
-              recommendations: alternatives,
-              nextMode: 'recommendation',
-              metadata: {
-                processingTime: Date.now() - startTime,
-                confidence: 0.85,
-                llmUsed: 'gpt-4o-mini'
-              }
-            };
-          } else {
-            return {
-              response: `Puxa, não encontrei veículos disponíveis no momento com esses critérios. 😕\n\nQuer ajustar o orçamento ou ver outras categorias?`,
-              extractedPreferences: { ...extracted.extracted, _waitingForSuggestionResponse: false, _searchedItem: undefined },
-              needsMoreInfo: ['budget', 'bodyType'],
-              canRecommend: false,
-              nextMode: 'discovery',
-              metadata: {
-                processingTime: Date.now() - startTime,
-                confidence: 0.7,
-                llmUsed: 'gpt-4o-mini'
-              }
-            };
-          }
-        } else {
-          // User declined suggestions
+          // Start asking questions to build profile for suggestions
           return {
-            response: `Sem problemas! 🙂 Me avisa se quiser ver outros tipos de veículos ou se tiver alguma outra dúvida.`,
+            response: `Ótimo! Vou te fazer algumas perguntas rápidas para encontrar o carro ideal pra você. 🚗\n\n💰 Qual seu orçamento aproximado?`,
+            extractedPreferences: { ...extracted.extracted, _waitingForSuggestionResponse: false, _searchedItem: undefined },
+            needsMoreInfo: ['budget', 'usage', 'people'],
+            canRecommend: false,
+            nextMode: 'discovery',
+            metadata: {
+              processingTime: Date.now() - startTime,
+              confidence: 0.9,
+              llmUsed: 'gpt-4o-mini'
+            }
+          };
+        } else {
+          // User declined - offer alternatives
+          return {
+            response: `Sem problemas! 🙂 Se mudar de ideia ou quiser ver outros veículos, é só me chamar!`,
             extractedPreferences: { ...extracted.extracted, _waitingForSuggestionResponse: false, _searchedItem: undefined },
             needsMoreInfo: [],
             canRecommend: false,
@@ -279,11 +235,11 @@ Temos 20 SUVs e 16 sedans no estoque. Para que você pretende usar o carro?"`;
             }
           };
         } else {
-          // Model/brand not found in inventory - ask if user wants suggestions
+          // Model/brand not found in inventory - ask if user wants to answer questions for suggestions
           const searchedItem = extracted.extracted.model || extracted.extracted.brand;
           const notFoundResponse = `Não temos ${searchedItem} disponível no estoque no momento. 😕
 
-Quer que eu te mostre algumas sugestões de veículos similares?`;
+Quer responder algumas perguntas rápidas para eu te dar sugestões personalizadas?`;
 
           return {
             response: notFoundResponse,
@@ -333,11 +289,11 @@ Quer que eu te mostre algumas sugestões de veículos similares?`;
         if (result.noPickupsFound) {
           const noPickupResponse = `No momento não temos pickups disponíveis no estoque. 🛻
 
-Quer que eu te mostre algumas sugestões? Temos SUVs com bom espaço de carga e outros veículos que podem atender sua necessidade!`;
+Quer responder algumas perguntas rápidas para eu te dar sugestões personalizadas?`;
 
           return {
             response: noPickupResponse,
-            extractedPreferences: { ...extracted.extracted, _waitingForSuggestionResponse: true },
+            extractedPreferences: { ...extracted.extracted, _waitingForSuggestionResponse: true, _searchedItem: 'pickup' },
             needsMoreInfo: [],
             canRecommend: false,
             nextMode: 'clarification',
