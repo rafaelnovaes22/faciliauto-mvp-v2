@@ -136,6 +136,59 @@ Temos 20 SUVs e 16 sedans no estoque. Para que você pretende usar o carro?"`;
         extracted.extracted
       );
 
+      // 2.5. Check if we offered suggestions and user is responding
+      const wasWaitingForSuggestionResponse = context.profile?._waitingForSuggestionResponse;
+      if (wasWaitingForSuggestionResponse) {
+        const userAccepts = this.detectAffirmativeResponse(userMessage);
+        
+        if (userAccepts) {
+          logger.info({ userMessage }, 'User accepted suggestions');
+          
+          // Search for alternatives (SUVs, etc)
+          const alternatives = await vehicleSearchAdapter.search('suv utilitário espaço', {
+            maxPrice: updatedProfile.budget,
+            minYear: updatedProfile.minYear,
+            limit: 5,
+          });
+          
+          if (alternatives.length > 0) {
+            const formattedResponse = await this.formatRecommendations(
+              alternatives,
+              updatedProfile,
+              context
+            );
+            
+            return {
+              response: `Ótimo! Aqui estão algumas opções que podem te interessar:\n\n${formattedResponse}`,
+              extractedPreferences: { ...extracted.extracted, _waitingForSuggestionResponse: false },
+              needsMoreInfo: [],
+              canRecommend: true,
+              recommendations: alternatives,
+              nextMode: 'recommendation',
+              metadata: {
+                processingTime: Date.now() - startTime,
+                confidence: 0.85,
+                llmUsed: 'gpt-4o-mini'
+              }
+            };
+          }
+        } else {
+          // User declined suggestions
+          return {
+            response: `Sem problemas! 🙂 Me avisa se quiser ver outros tipos de veículos ou se tiver alguma outra dúvida.`,
+            extractedPreferences: { ...extracted.extracted, _waitingForSuggestionResponse: false },
+            needsMoreInfo: [],
+            canRecommend: false,
+            nextMode: 'discovery',
+            metadata: {
+              processingTime: Date.now() - startTime,
+              confidence: 0.8,
+              llmUsed: 'gpt-4o-mini'
+            }
+          };
+        }
+      }
+
       // 3. Check if user mentioned specific model (e.g., "Spin", "Civic")
       const hasSpecificModel = !!(extracted.extracted.model || extracted.extracted.brand);
 
@@ -218,18 +271,18 @@ Posso te mostrar modelos similares? Me conta mais sobre o que você busca (uso, 
         // Generate recommendations
         const result = await this.getRecommendations(updatedProfile);
         
-        // Se não encontrou pickups, informar ao usuário
+        // Se não encontrou pickups, oferecer sugestões alternativas
         if (result.noPickupsFound) {
           const noPickupResponse = `No momento não temos pickups disponíveis no estoque. 🛻
 
-Se quiser, posso te mostrar outros tipos de veículos - é só me dizer qual categoria te interessa (SUV, sedan, hatch, etc.) ou algum modelo específico!`;
+Quer que eu te mostre algumas sugestões? Temos SUVs com bom espaço de carga e outros veículos que podem atender sua necessidade!`;
 
           return {
             response: noPickupResponse,
-            extractedPreferences: extracted.extracted,
+            extractedPreferences: { ...extracted.extracted, _waitingForSuggestionResponse: true },
             needsMoreInfo: [],
             canRecommend: false,
-            nextMode: 'discovery',
+            nextMode: 'clarification',
             metadata: {
               processingTime: Date.now() - startTime,
               confidence: 0.9,
@@ -314,6 +367,47 @@ Se quiser, posso te mostrar outros tipos de veículos - é só me dizer qual cat
     ];
 
     return questionPatterns.some(pattern => pattern.test(message.trim()));
+  }
+
+  /**
+   * Detect if user response is affirmative (accepting a suggestion)
+   */
+  private detectAffirmativeResponse(message: string): boolean {
+    const normalized = message.toLowerCase().trim();
+    
+    // Affirmative patterns
+    const affirmativePatterns = [
+      /^(sim|s|ss|sss|siiim|siim)$/i,
+      /^(pode|podes|pode ser|pode sim)$/i,
+      /^(quero|quero sim|quero ver)$/i,
+      /^(ok|okay|beleza|blz|bora|vamos|show)$/i,
+      /^(claro|com certeza|certeza)$/i,
+      /^(tá|ta|tudo bem|tranquilo)$/i,
+      /^(manda|manda aí|manda ver|mostra)$/i,
+      /^(por favor|pfv|pf)$/i,
+      /sim,?\s*(pode|quero|manda)/i,
+      /pode\s*(me )?mostrar/i,
+      /quero\s*(ver|saber)/i,
+      /mostra\s*(aí|ai|pra mim)?/i,
+      /(me )?mostra/i,
+      /interessado/i,
+      /tenho interesse/i,
+    ];
+
+    // Negative patterns (to avoid false positives)
+    const negativePatterns = [
+      /^(não|nao|n|nn|nope|nunca)$/i,
+      /não\s*(quero|preciso|obrigado)/i,
+      /deixa\s*(pra lá|quieto)/i,
+      /sem\s*(interesse|necessidade)/i,
+    ];
+
+    // Check for negative first
+    if (negativePatterns.some(pattern => pattern.test(normalized))) {
+      return false;
+    }
+
+    return affirmativePatterns.some(pattern => pattern.test(normalized));
   }
 
   /**
