@@ -21,7 +21,7 @@ import {
 } from '../types/conversation.types';
 
 export class VehicleExpertAgent {
-  
+
   private readonly SYSTEM_PROMPT = `Você é um especialista em vendas de veículos usados da FaciliAuto (loja Robust Car).
 
 📊 CONHECIMENTO DA BASE:
@@ -104,44 +104,44 @@ Temos 20 SUVs e 16 sedans no estoque. Para que você pretende usar o carro?"`;
     context: ConversationContext
   ): Promise<ConversationResponse> {
     const startTime = Date.now();
-    
+
     try {
-      logger.info({ 
-        mode: context.mode, 
-        messageCount: context.metadata.messageCount 
+      logger.info({
+        mode: context.mode,
+        messageCount: context.metadata.messageCount
       }, 'VehicleExpert processing message');
-      
+
       // 1. Extract preferences from current message
       const extracted = await preferenceExtractor.extract(userMessage, {
         currentProfile: context.profile,
         conversationHistory: context.messages.slice(-3).map(m => m.content)
       });
-      
+
       // 2. Merge with existing profile
       const updatedProfile = preferenceExtractor.mergeWithProfile(
         context.profile,
         extracted.extracted
       );
-      
+
       // 3. Check if user mentioned specific model (e.g., "Spin", "Civic")
       const hasSpecificModel = !!(extracted.extracted.model || extracted.extracted.brand);
-      
+
       if (hasSpecificModel) {
-        logger.info({ 
-          brand: extracted.extracted.brand, 
-          model: extracted.extracted.model 
+        logger.info({
+          brand: extracted.extracted.brand,
+          model: extracted.extracted.model
         }, 'VehicleExpert: Specific model mentioned, searching directly');
-        
+
         // Search for specific model
         const recommendations = await this.getRecommendations(updatedProfile);
-        
+
         if (recommendations.length > 0) {
           const formattedResponse = await this.formatRecommendations(
             recommendations,
             updatedProfile,
             context
           );
-          
+
           return {
             response: formattedResponse,
             extractedPreferences: extracted.extracted,
@@ -160,7 +160,7 @@ Temos 20 SUVs e 16 sedans no estoque. Para que você pretende usar o carro?"`;
           const notFoundResponse = `Desculpe, não tenho ${extracted.extracted.model || extracted.extracted.brand} disponível no momento. 
 
 Posso te mostrar modelos similares? Me conta mais sobre o que você busca (uso, orçamento, etc).`;
-          
+
           return {
             response: notFoundResponse,
             extractedPreferences: extracted.extracted,
@@ -175,15 +175,15 @@ Posso te mostrar modelos similares? Me conta mais sobre o que você busca (uso, 
           };
         }
       }
-      
+
       // 4. Detect if user asked a question (vs just answering)
       const isUserQuestion = this.detectUserQuestion(userMessage);
-      
+
       // 5. Route based on question detection
       if (isUserQuestion) {
         // Answer user's question using RAG
         const answer = await this.answerQuestion(userMessage, context, updatedProfile);
-        
+
         return {
           response: answer,
           extractedPreferences: extracted.extracted,
@@ -197,10 +197,10 @@ Posso te mostrar modelos similares? Me conta mais sobre o que você busca (uso, 
           }
         };
       }
-      
+
       // 6. Assess if we're ready to recommend
       const readiness = this.assessReadiness(updatedProfile, context);
-      
+
       if (readiness.canRecommend) {
         // Generate recommendations
         const recommendations = await this.getRecommendations(updatedProfile);
@@ -209,7 +209,7 @@ Posso te mostrar modelos similares? Me conta mais sobre o que você busca (uso, 
           updatedProfile,
           context
         );
-        
+
         return {
           response: formattedResponse,
           extractedPreferences: extracted.extracted,
@@ -224,14 +224,14 @@ Posso te mostrar modelos similares? Me conta mais sobre o que você busca (uso, 
           }
         };
       }
-      
+
       // 7. Continue conversation - ask next contextual question
       const nextQuestion = await this.generateNextQuestion({
         profile: updatedProfile,
         missingFields: readiness.missingRequired,
         context: this.summarizeContext(context)
       });
-      
+
       return {
         response: nextQuestion,
         extractedPreferences: extracted.extracted,
@@ -244,10 +244,10 @@ Posso te mostrar modelos similares? Me conta mais sobre o que você busca (uso, 
           llmUsed: 'gpt-4o-mini'
         }
       };
-      
+
     } catch (error) {
       logger.error({ error, userMessage }, 'VehicleExpert chat failed');
-      
+
       // Fallback response
       return {
         response: 'Desculpe, tive um problema ao processar sua mensagem. Pode reformular?',
@@ -261,7 +261,7 @@ Posso te mostrar modelos similares? Me conta mais sobre o que você busca (uso, 
       };
     }
   }
-  
+
   /**
    * Detect if user is asking a question (vs just answering our questions)
    */
@@ -277,10 +277,10 @@ Posso te mostrar modelos similares? Me conta mais sobre o que você busca (uso, 
       /gostaria de saber/i,
       /queria saber/i,
     ];
-    
+
     return questionPatterns.some(pattern => pattern.test(message.trim()));
   }
-  
+
   /**
    * Answer user's question using RAG (Retrieval Augmented Generation)
    */
@@ -297,16 +297,16 @@ Posso te mostrar modelos similares? Me conta mais sobre o que você busca (uso, 
         minYear: profile.minYear,
         limit: 3
       });
-      
+
       // Build context for LLM
       const vehicleContext = relevantVehicles.length > 0
-        ? `VEÍCULOS RELEVANTES NO ESTOQUE:\n${relevantVehicles.map((v, i) => 
-            `${i+1}. ${v.vehicle.brand} ${v.vehicle.model} ${v.vehicle.year} - R$ ${v.vehicle.price.toLocaleString('pt-BR')}`
-          ).join('\n')}`
+        ? `VEÍCULOS RELEVANTES NO ESTOQUE:\n${relevantVehicles.map((v, i) =>
+          `${i + 1}. ${v.vehicle.brand} ${v.vehicle.model} ${v.vehicle.year} - R$ ${v.vehicle.price.toLocaleString('pt-BR')}`
+        ).join('\n')}`
         : 'Nenhum veículo específico encontrado para essa pergunta.';
-      
+
       const conversationSummary = this.summarizeContext(context);
-      
+
       const prompt = `${this.SYSTEM_PROMPT}
 
 PERGUNTA DO CLIENTE: "${question}"
@@ -330,15 +330,15 @@ Sempre mantenha o foco em ajudar o cliente a encontrar o carro ideal.`;
         temperature: 0.7,
         maxTokens: 350
       });
-      
+
       return response.trim();
-      
+
     } catch (error) {
       logger.error({ error, question }, 'Failed to answer question');
       return 'Desculpe, não consegui processar sua pergunta. Pode reformular de outra forma?';
     }
   }
-  
+
   /**
    * Generate next contextual question to ask the user
    */
@@ -347,7 +347,7 @@ Sempre mantenha o foco em ajudar o cliente a encontrar o carro ideal.`;
   ): Promise<string> {
     try {
       const { profile, missingFields, context } = options;
-      
+
       const prompt = `${this.SYSTEM_PROMPT}
 
 PERFIL ATUAL DO CLIENTE:
@@ -385,15 +385,15 @@ Gere APENAS a pergunta, sem prefácio ou explicação:`;
         temperature: 0.8,
         maxTokens: 150
       });
-      
+
       return response.trim();
-      
+
     } catch (error) {
       logger.error({ error }, 'Failed to generate question');
-      
+
       // Fallback to basic question based on missing fields
       const { profile, missingFields } = options;
-      
+
       if (missingFields.includes('budget') || !profile.budget) {
         return '💰 Qual seu orçamento aproximado para o carro?';
       }
@@ -403,11 +403,11 @@ Gere APENAS a pergunta, sem prefácio ou explicação:`;
       if (missingFields.includes('people') || !profile.people) {
         return '👥 Quantas pessoas geralmente vão usar o carro?';
       }
-      
+
       return 'Me conta mais sobre o que você busca no carro ideal?';
     }
   }
-  
+
   /**
    * Get vehicle recommendations based on profile
    */
@@ -417,28 +417,41 @@ Gere APENAS a pergunta, sem prefácio ou explicação:`;
     try {
       // Build search query
       const query = this.buildSearchQuery(profile);
-      
+
+      // Detect Uber requirements from profile
+      const isUberBlack = profile.usoPrincipal === 'uber' &&
+        (profile.priorities?.includes('uber_black') ||
+          profile.priorities?.includes('black') ||
+          profile.tipoUber === 'black');
+
+      const isUberX = profile.usoPrincipal === 'uber' && !isUberBlack;
+
       // Search vehicles
       const results = await vehicleSearchAdapter.search(query.searchText, {
         maxPrice: query.filters.maxPrice,
         minYear: query.filters.minYear,
         bodyType: query.filters.bodyType?.[0],
-        limit: 5
+        limit: 5,
+        // Apply Uber filters
+        aptoUber: isUberX || undefined,
+        aptoUberBlack: isUberBlack || undefined,
       });
-      
-      logger.info({ 
+
+      logger.info({
         profileKeys: Object.keys(profile),
-        resultsCount: results.length 
+        resultsCount: results.length,
+        isUberBlack,
+        isUberX
       }, 'Generated recommendations');
-      
+
       return results;
-      
+
     } catch (error) {
       logger.error({ error, profile }, 'Failed to get recommendations');
       return [];
     }
   }
-  
+
   /**
    * Format recommendations into natural language message
    */
@@ -457,10 +470,10 @@ Posso ajustar os critérios? Por exemplo:
 
 Me diz o que prefere!`;
     }
-    
+
     try {
       const top3 = recommendations.slice(0, 3);
-      
+
       const vehiclesList = top3.map((rec, i) => {
         const v = rec.vehicle;
         return `${i + 1}. ${i === 0 ? '🏆 ' : ''}${v.brand} ${v.model} ${v.year} - R$ ${v.price.toLocaleString('pt-BR')} (${Math.round(rec.matchScore)}% match)
@@ -468,24 +481,24 @@ Me diz o que prefere!`;
    ✓ ${v.bodyType || 'N/A'}${v.transmission ? `, ${v.transmission}` : ''}
    ${rec.highlights?.[0] || ''}`;
       }).join('\n\n');
-      
+
       const intro = this.generateRecommendationIntro(profile, recommendations.length);
-      
+
       const outro = `\nQual te interessou mais? Posso dar mais detalhes ou fazer simulação de financiamento! 😊`;
-      
+
       return `${intro}\n\n${vehiclesList}${outro}`;
-      
+
     } catch (error) {
       logger.error({ error }, 'Failed to format recommendations');
-      
+
       // Fallback simple format
       return `Encontrei ${recommendations.length} veículos para você!\n\n` +
-        recommendations.slice(0, 3).map((r, i) => 
-          `${i+1}. ${r.vehicle.brand} ${r.vehicle.model} - R$ ${r.vehicle.price.toLocaleString('pt-BR')}`
+        recommendations.slice(0, 3).map((r, i) =>
+          `${i + 1}. ${r.vehicle.brand} ${r.vehicle.model} - R$ ${r.vehicle.price.toLocaleString('pt-BR')}`
         ).join('\n');
     }
   }
-  
+
   /**
    * Generate intro for recommendations based on profile
    */
@@ -494,7 +507,7 @@ Me diz o que prefere!`;
     count: number
   ): string {
     const parts: string[] = [];
-    
+
     if (profile.usage) {
       const usageMap = {
         cidade: 'uso urbano',
@@ -504,26 +517,26 @@ Me diz o que prefere!`;
       };
       parts.push(usageMap[profile.usage] || profile.usage);
     }
-    
+
     if (profile.people) {
       parts.push(`${profile.people} pessoas`);
     }
-    
+
     if (profile.budget) {
       parts.push(`até R$ ${profile.budget.toLocaleString('pt-BR')}`);
     }
-    
+
     const criteria = parts.length > 0 ? ` para ${parts.join(', ')}` : '';
-    
+
     return `Perfeito! Encontrei ${count} veículo${count > 1 ? 's' : ''} IDEAL${count > 1 ? 'IS' : ''}${criteria}:`;
   }
-  
+
   /**
    * Build search query from profile
    */
   private buildSearchQuery(profile: Partial<CustomerProfile>): VehicleSearchQuery {
     const searchParts: string[] = [];
-    
+
     if (profile.bodyType) {
       searchParts.push(profile.bodyType);
     }
@@ -533,7 +546,7 @@ Me diz o que prefere!`;
     if (profile.priorities) {
       searchParts.push(...profile.priorities);
     }
-    
+
     return {
       searchText: searchParts.join(' ') || 'carro usado',
       filters: {
@@ -555,7 +568,7 @@ Me diz o que prefere!`;
       minMatchScore: 60
     };
   }
-  
+
   /**
    * Assess if we have enough information to recommend vehicles
    */
@@ -566,21 +579,21 @@ Me diz o que prefere!`;
     // Required fields
     const required = ['budget', 'usage', 'people'];
     const missingRequired = required.filter(field => !profile[field]);
-    
+
     // Optional but helpful fields
     const optional = ['bodyType', 'minYear', 'transmission'];
     const missingOptional = optional.filter(field => !profile[field]);
-    
+
     // Calculate confidence
     const requiredScore = ((required.length - missingRequired.length) / required.length) * 100;
     const optionalScore = ((optional.length - missingOptional.length) / optional.length) * 30;
     const confidence = Math.min(100, requiredScore + optionalScore);
-    
+
     // Decision logic
     let canRecommend = false;
     let action: 'continue_asking' | 'recommend_now' | 'ask_confirmation' = 'continue_asking';
     let reasoning = '';
-    
+
     if (missingRequired.length === 0) {
       // Has all required fields
       canRecommend = true;
@@ -601,7 +614,7 @@ Me diz o que prefere!`;
       action = 'continue_asking';
       reasoning = `Faltam campos essenciais: ${missingRequired.join(', ')}`;
     }
-    
+
     return {
       canRecommend,
       confidence,
@@ -611,7 +624,7 @@ Me diz o que prefere!`;
       reasoning
     };
   }
-  
+
   /**
    * Identify what information is still missing
    */
@@ -619,7 +632,7 @@ Me diz o que prefere!`;
     const important = ['budget', 'usage', 'people', 'bodyType'];
     return important.filter(field => !profile[field]);
   }
-  
+
   /**
    * Summarize conversation context for LLM
    */
@@ -628,7 +641,7 @@ Me diz o que prefere!`;
     const summary = recentMessages
       .map(m => `${m.role === 'user' ? 'Cliente' : 'Você'}: ${m.content}`)
       .join('\n');
-    
+
     return `Modo: ${context.mode}\nMensagens trocadas: ${context.metadata.messageCount}\n\nÚltimas mensagens:\n${summary}`;
   }
 }

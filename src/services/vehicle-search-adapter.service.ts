@@ -18,6 +18,9 @@ interface SearchFilters {
   transmission?: string;
   brand?: string;
   limit?: number;
+  // Uber filters
+  aptoUber?: boolean;
+  aptoUberBlack?: boolean;
 }
 
 export class VehicleSearchAdapter {
@@ -30,15 +33,15 @@ export class VehicleSearchAdapter {
   ): Promise<VehicleRecommendation[]> {
     try {
       const limit = filters.limit || 5;
-      
+
       // Get vehicle IDs from semantic search
       const vehicleIds = await inMemoryVectorStore.search(query, limit * 2); // Get more to filter
-      
+
       if (vehicleIds.length === 0) {
         logger.warn({ query, filters }, 'No vehicles found in semantic search');
         return [];
       }
-      
+
       // Fetch full vehicle data
       const vehicles = await prisma.vehicle.findMany({
         where: {
@@ -52,10 +55,13 @@ export class VehicleSearchAdapter {
           ...(filters.bodyType && { carroceria: filters.bodyType }),
           ...(filters.transmission && { cambio: filters.transmission }),
           ...(filters.brand && { marca: filters.brand }),
+          // Uber filters
+          ...(filters.aptoUber && { aptoUber: true }),
+          ...(filters.aptoUberBlack && { aptoUberBlack: true }),
         },
         take: limit,
       });
-      
+
       // Convert to VehicleRecommendation format
       return vehicles.map((vehicle, index) => ({
         vehicleId: vehicle.id,
@@ -78,41 +84,41 @@ export class VehicleSearchAdapter {
           detailsUrl: vehicle.url || null,
         }
       }));
-      
+
     } catch (error) {
       logger.error({ error, query, filters }, 'Error searching vehicles');
       return [];
     }
   }
-  
+
   /**
    * Generate highlights for a vehicle
    */
   private generateHighlights(vehicle: any): string[] {
     const highlights: string[] = [];
-    
+
     // Low mileage
     if (vehicle.km < 50000) {
       highlights.push(`Baixa quilometragem: ${vehicle.km.toLocaleString('pt-BR')}km`);
     }
-    
+
     // Recent year
     const currentYear = new Date().getFullYear();
     if (vehicle.ano >= currentYear - 3) {
       highlights.push(`Veículo recente: ${vehicle.ano}`);
     }
-    
+
     // Features
     const features = [];
     if (vehicle.arCondicionado) features.push('Ar condicionado');
     if (vehicle.direcaoHidraulica) features.push('Direção hidráulica');
     if (vehicle.airbag) features.push('Airbag');
     if (vehicle.abs) features.push('ABS');
-    
+
     if (features.length > 0) {
       highlights.push(`Equipado: ${features.slice(0, 2).join(', ')}`);
     }
-    
+
     return highlights.slice(0, 3); // Max 3 highlights
   }
 }

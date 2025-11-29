@@ -28,6 +28,7 @@ export interface CustomerProfile {
   usage?: 'cidade' | 'viagem' | 'trabalho' | 'misto';
   usagePattern?: string; // legacy support
   usoPrincipal?: string; // alias for usage (Portuguese)
+  tipoUber?: 'uberx' | 'comfort' | 'black'; // Uber category
 
   // People
   people?: number;
