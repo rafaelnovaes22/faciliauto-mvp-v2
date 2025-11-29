@@ -58,9 +58,6 @@ export interface CustomerProfile {
 
   // Urgency
   urgency?: 'imediato' | '1mes' | '3meses' | 'flexivel';
-  
-  // Internal state flags (used for conversation flow)
-  _askedForAlternatives?: boolean; // Indicates we asked user if they want alternatives to pickup
 }
 
 export interface VehicleRecommendation {
