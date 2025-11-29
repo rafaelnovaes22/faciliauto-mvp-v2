@@ -55,6 +55,8 @@ CAMPOS POSSÍVEIS:
 REGRAS ESPECIAIS:
 - Se mencionar "cadeirinha", "bebê conforto", "criança", "filho", "filhos" → usoPrincipal: "familia", priorities: ["cadeirinha", "espaco_traseiro"]
 - Para família com crianças, NUNCA recomendar hatch pequeno (Mobi, Kwid, Up, Uno)
+- Se mencionar "picape", "pickup", "caminhonete", "caçamba", "carga pesada", "obra", "material" → bodyType: "pickup", priorities incluir "pickup"
+- Modelos de pickup conhecidos: Strada, S10, Hilux, Ranger, Saveiro, Toro, L200, Amarok → bodyType: "pickup"
 
 EXEMPLOS:
 
@@ -142,6 +144,31 @@ Saída: {
   "confidence": 0.9,
   "reasoning": "Modelo específico (Civic é da Honda) e cor identificados",
   "fieldsExtracted": ["brand", "model", "color"]
+}
+
+Entrada: "Preciso de uma picape para trabalho" ou "Quero uma pickup" ou "Tem caminhonete?"
+Saída: {
+  "extracted": {
+    "bodyType": "pickup",
+    "usage": "trabalho",
+    "priorities": ["pickup", "carga"]
+  },
+  "confidence": 0.95,
+  "reasoning": "Solicitação explícita de pickup/picape/caminhonete",
+  "fieldsExtracted": ["bodyType", "usage", "priorities"]
+}
+
+Entrada: "Tem Strada?" ou "Quero uma S10" ou "Hilux até 80 mil"
+Saída: {
+  "extracted": {
+    "bodyType": "pickup",
+    "model": "strada",
+    "brand": "fiat",
+    "priorities": ["pickup"]
+  },
+  "confidence": 0.95,
+  "reasoning": "Modelo de pickup identificado (Strada é Fiat, S10 é Chevrolet, Hilux é Toyota)",
+  "fieldsExtracted": ["bodyType", "model", "brand", "priorities"]
 }
 
 Entrada: "Oi, tudo bem?"
@@ -330,7 +357,24 @@ Saída: {
       sanitized.brand = this.normalizeBrand(extracted.brand);
     }
     if (extracted.model) {
-      sanitized.model = extracted.model.trim();
+      sanitized.model = extracted.model.trim().toLowerCase();
+      
+      // Check if model is a known pickup - infer brand and bodyType
+      const pickupBrand = this.getPickupBrand(sanitized.model);
+      if (pickupBrand) {
+        // Auto-set brand if not already set
+        if (!sanitized.brand) {
+          sanitized.brand = pickupBrand;
+        }
+        // Auto-set bodyType to pickup
+        sanitized.bodyType = 'pickup';
+        // Add to priorities
+        if (!sanitized.priorities) {
+          sanitized.priorities = ['pickup'];
+        } else if (!sanitized.priorities.includes('pickup')) {
+          sanitized.priorities.push('pickup');
+        }
+      }
     }
 
     // Array fields
@@ -339,6 +383,14 @@ Saída: {
     }
     if (Array.isArray(extracted.dealBreakers)) {
       sanitized.dealBreakers = extracted.dealBreakers.filter(d => typeof d === 'string' && d.length > 0);
+    }
+    
+    // Also copy usoPrincipal and tipoUber if present
+    if (extracted.usoPrincipal) {
+      sanitized.usoPrincipal = extracted.usoPrincipal;
+    }
+    if (extracted.tipoUber) {
+      sanitized.tipoUber = extracted.tipoUber;
     }
 
     return sanitized;
@@ -365,9 +417,36 @@ Saída: {
       'jeep': 'jeep',
       'citroen': 'citroen',
       'peugeot': 'peugeot',
+      'mitsubishi': 'mitsubishi',
     };
 
     return brandMap[normalized] || normalized;
+  }
+
+  /**
+   * Map pickup model names to their brands
+   */
+  private getPickupBrand(model: string): string | null {
+    const modelLower = model.toLowerCase().trim();
+    
+    const pickupBrandMap: Record<string, string> = {
+      'strada': 'fiat',
+      'toro': 'fiat',
+      's10': 'chevrolet',
+      'montana': 'chevrolet',
+      'hilux': 'toyota',
+      'ranger': 'ford',
+      'maverick': 'ford',
+      'saveiro': 'volkswagen',
+      'amarok': 'volkswagen',
+      'l200': 'mitsubishi',
+      'triton': 'mitsubishi',
+      'frontier': 'nissan',
+      'oroch': 'renault',
+      'duster oroch': 'renault',
+    };
+
+    return pickupBrandMap[modelLower] || null;
   }
 
   /**

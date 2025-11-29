@@ -58,6 +58,9 @@ export interface CustomerProfile {
 
   // Urgency
   urgency?: 'imediato' | '1mes' | '3meses' | 'flexivel';
+  
+  // Internal state flags (used for conversation flow)
+  _waitingForSuggestionResponse?: boolean; // Indicates we offered suggestions and waiting for user response
 }
 
 export interface VehicleRecommendation {

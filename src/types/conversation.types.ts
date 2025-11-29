@@ -69,6 +69,7 @@ export interface ConversationResponse {
     processingTime?: number;
     confidence?: number;
     llmUsed?: string;
+    noPickupsFound?: boolean; // Indicates no pickups were found for user request
   };
 }
 
