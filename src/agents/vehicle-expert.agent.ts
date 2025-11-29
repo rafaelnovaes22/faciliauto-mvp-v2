@@ -51,6 +51,18 @@ export class VehicleExpertAgent {
 - Cor: Preto (preferencial)
 - Ar-condicionado + couro + vidros elétricos
 
+👨‍👩‍👧‍👦 CRITÉRIOS FAMÍLIA/CADEIRINHA:
+**Com 2 cadeirinhas (precisa espaço traseiro amplo):**
+- IDEAIS: SUVs (Creta, Kicks, T-Cross, Tracker, HR-V, Compass, Tucson)
+- IDEAIS: Sedans médios (Corolla, Civic, Cruze, Sentra, Virtus)
+- ACEITÁVEIS: Sedans compactos (HB20S, Onix Plus, Cronos, Voyage)
+- EXCELENTES: Minivans (Spin, Livina)
+- NUNCA: Hatch compactos (Mobi, Kwid, Up, Uno, Ka, March)
+
+**Família sem cadeirinha (mais flexível):**
+- SUVs, Sedans e Hatches médios são ok
+- Evitar apenas os muito compactos (Mobi, Kwid, Up, Uno)
+
 🎯 SEU PAPEL:
 Você é um consultor de vendas experiente que ajuda clientes a encontrar o carro ideal através de conversa natural.
 
@@ -61,7 +73,8 @@ RESPONSABILIDADES:
 4. Explicar diferenças entre categorias, modelos, tecnologias
 5. Recomendar veículos baseado no perfil do cliente
 6. **ESPECIALIDADE UBER:** Conhecer requisitos de cada categoria (X, Comfort, Black)
-7. Explicar economia de combustível, documentação, e viabilidade para apps
+7. **ESPECIALIDADE FAMÍLIA:** Saber quais carros comportam cadeirinhas
+8. Explicar economia de combustível, documentação, e viabilidade para apps
 
 🚫 REGRAS ABSOLUTAS:
 - NUNCA invente informações sobre veículos ou preços
@@ -446,24 +459,80 @@ Gere APENAS a pergunta, sem prefácio ou explicação:`;
         aptoFamilia: isFamily || undefined,
       });
 
-      // Post-filter: exclude small hatchbacks for family use
+      // Post-filter: apply family-specific rules
       let filteredResults = results;
       if (isFamily) {
-        const smallHatchModels = ['mobi', 'kwid', 'up', 'uno', 'gol', 'ka', 'hb20', 'onix'];
+        const hasCadeirinha = profile.priorities?.includes('cadeirinha') ||
+          profile.priorities?.includes('crianca');
+        const peopleCount = profile.people || 4;
+
         filteredResults = results.filter(rec => {
           const model = rec.vehicle.model?.toLowerCase() || '';
           const bodyType = rec.vehicle.bodyType?.toLowerCase() || '';
 
-          // Exclude small hatchbacks
-          if (bodyType.includes('hatch')) {
-            return !smallHatchModels.some(small => model.includes(small));
+          // NUNCA para família: hatch compactos/subcompactos
+          const neverForFamily = ['mobi', 'kwid', 'up!', 'uno', 'ka', 'march', 'sandero'];
+          if (neverForFamily.some(n => model.includes(n))) {
+            return false;
           }
+
+          // Com cadeirinha: precisa de mais espaço
+          if (hasCadeirinha) {
+            // Ideais para 2 cadeirinhas: SUVs, Sedans médios/grandes, Minivans
+            const idealForCadeirinha = [
+              // SUVs compactos bons
+              'creta', 'kicks', 't-cross', 'tcross', 'tracker', 'hr-v', 'hrv', 'renegade',
+              // SUVs médios (excelentes)
+              'tucson', 'compass', 'corolla cross', 'tiguan', 'sw4', 'trailblazer', 'commander',
+              // Sedans médios/grandes (muito bons)
+              'corolla', 'civic', 'cruze', 'sentra', 'jetta', 'virtus',
+              // Sedans compactos (aceitáveis)
+              'hb20s', 'onix plus', 'cronos', 'voyage', 'prisma',
+              // Minivans (excelentes)
+              'spin', 'livina', 'zafira'
+            ];
+
+            // Se é hatch, só aceita se for espaçoso
+            if (bodyType.includes('hatch')) {
+              const hatchOkForFamily = ['fit', 'golf', 'polo', 'argo'];
+              return hatchOkForFamily.some(h => model.includes(h));
+            }
+
+            // SUV e Sedan são sempre ok (exceto os já filtrados)
+            if (bodyType.includes('suv') || bodyType.includes('sedan')) {
+              return true;
+            }
+
+            // Minivan é excelente
+            if (bodyType.includes('minivan') || model.includes('spin')) {
+              return true;
+            }
+
+            // Verifica se está na lista ideal
+            return idealForCadeirinha.some(ideal => model.includes(ideal));
+          }
+
+          // Família sem cadeirinha (mais flexível)
+          // Exclui apenas os muito pequenos
+          if (bodyType.includes('hatch')) {
+            const smallHatch = ['mobi', 'kwid', 'up', 'uno', 'ka', 'march'];
+            return !smallHatch.some(s => model.includes(s));
+          }
+
           return true;
         });
 
-        // If we filtered too much, include some back
+        // Se filtrou demais, relaxa os critérios
         if (filteredResults.length < 3 && results.length >= 3) {
-          filteredResults = results.slice(0, 5);
+          // Tenta pegar pelo menos sedans e SUVs
+          filteredResults = results.filter(rec => {
+            const bodyType = rec.vehicle.bodyType?.toLowerCase() || '';
+            return bodyType.includes('suv') || bodyType.includes('sedan') || bodyType.includes('minivan');
+          });
+
+          if (filteredResults.length < 3) {
+            filteredResults = results.slice(0, 5);
+          }
         }
       }
 
