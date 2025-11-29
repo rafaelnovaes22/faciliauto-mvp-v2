@@ -175,7 +175,7 @@ Me conta: o que você está procurando?`;
   }
 
   /**
-   * Handle context discovery (uso principal)
+   * Handle context discovery (uso principal e orçamento)
    */
   private async handleContextDiscovery(
     message: string,
@@ -185,32 +185,61 @@ Me conta: o que você está procurando?`;
     const context = await this.extractContext(message);
 
     const customerName = state.profile.customerName || 'amigo';
+    const currentBudget = state.profile.orcamento || state.profile.budget;
+    const currentUsage = state.profile.usoPrincipal;
+
+    // Update profile with extracted values
+    const updatedProfile: Partial<CustomerProfile> = {};
+
+    if (context.usoPrincipal) {
+      updatedProfile.usoPrincipal = context.usoPrincipal;
+    }
+    if (context.orcamento) {
+      updatedProfile.orcamento = context.orcamento;
+      updatedProfile.budget = context.orcamento;
+    }
+
+    // Determine what we still need
+    const hasUsage = context.usoPrincipal || currentUsage;
+    const hasBudget = context.orcamento || currentBudget;
 
     let response = '';
 
-    if (context.usoPrincipal === 'uber' || context.usoPrincipal === 'aplicativo') {
-      response = `Legal! Para Uber/99, temos vários modelos aptos. Qual categoria você quer e qual seu orçamento?`;
+    // If we have both, we're done with onboarding
+    if (hasUsage && hasBudget) {
+      const usage = context.usoPrincipal || currentUsage;
+      const budget = context.orcamento || currentBudget;
 
-    } else if (context.usoPrincipal === 'familia') {
-      response = `Ótimo! Para família temos SUVs e Sedans espaçosos. Me conta mais: quantas pessoas e qual seu orçamento?`;
+      if (usage === 'uber' || usage === 'aplicativo') {
+        response = `Perfeito! Vou buscar carros aptos para aplicativos até R$ ${budget?.toLocaleString('pt-BR')}. Um momento...`;
+      } else {
+        response = `Ótimo! Vou buscar as melhores opções até R$ ${budget?.toLocaleString('pt-BR')} para você. Um momento...`;
+      }
+    }
+    // If we only have budget, ask for usage
+    else if (hasBudget && !hasUsage) {
+      response = `Anotado! Orçamento de R$ ${(context.orcamento || currentBudget)?.toLocaleString('pt-BR')}. 
 
-    } else if (context.usoPrincipal === 'trabalho') {
-      response = `Entendi! Para trabalho temos opções econômicas. Qual seu orçamento aproximado?`;
-
-    } else if (context.usoPrincipal === 'viagem') {
-      response = `Perfeito! Para viagens temos SUVs e Sedans confortáveis. Qual seu orçamento?`;
-
-    } else {
-      // Generic response - let VehicleExpert handle it
-      response = `Entendi! Me conta mais sobre o que você busca e qual seu orçamento aproximado?`;
+E qual vai ser o uso principal? Cidade, viagens, trabalho ou aplicativo (Uber/99)?`;
+    }
+    // If we only have usage, ask for budget
+    else if (hasUsage && !hasBudget) {
+      if (context.usoPrincipal === 'uber' || context.usoPrincipal === 'aplicativo') {
+        response = `Legal! Para Uber/99, temos vários modelos aptos. Qual seu orçamento aproximado?`;
+      } else if (context.usoPrincipal === 'familia') {
+        response = `Ótimo! Para família temos SUVs e Sedans espaçosos. Qual seu orçamento aproximado?`;
+      } else {
+        response = `Entendi! Qual seu orçamento aproximado?`;
+      }
+    }
+    // If we have neither, ask for both
+    else {
+      response = `Me conta: qual vai ser o uso principal do carro e qual seu orçamento aproximado?`;
     }
 
     return {
       response,
-      updatedProfile: {
-        usoPrincipal: context.usoPrincipal,
-        orcamento: context.orcamento
-      }
+      updatedProfile
     };
   }
 
@@ -264,32 +293,37 @@ Nome:`;
     usoPrincipal: string | null;
     orcamento: number | null;
   }> {
+    // First, try to extract budget with simple regex (faster, no LLM needed)
+    const budgetMatch = this.extractBudgetSimple(message);
+
     try {
       const prompt = `Identifique o CONTEXTO DE USO e ORÇAMENTO desta mensagem sobre compra de carro.
 
 Mensagem: "${message}"
 
 CONTEXTOS POSSÍVEIS:
-- uber/aplicativo: Para trabalhar com Uber, 99, etc
+- uber: Para trabalhar com Uber, 99, aplicativos de transporte
 - familia: Para uso familiar, esposa, filhos
 - trabalho: Para ir ao trabalho, uso diário na cidade
 - viagem: Para viagens, passeios
-- outro: Outros usos
+- null: Se não mencionar uso específico
 
 ORÇAMENTO:
-- Extraia o valor aproximado em reais (apenas número)
-- Se não mencionar, retorne null
+- Extraia o valor em reais (apenas número inteiro)
+- "50 mil" = 50000
+- "50k" = 50000
+- "R$ 50.000" = 50000
+- Se não mencionar valor, retorne null
 
-Responda em JSON:
-{
-  "usoPrincipal": "uber|familia|trabalho|viagem|outro|null",
-  "orcamento": 50000 ou null
-}
+Responda APENAS o JSON, sem texto adicional:
+{"usoPrincipal": "uber|familia|trabalho|viagem|null", "orcamento": 50000}
 
 Exemplos:
 "Quero um carro para Uber" → {"usoPrincipal": "uber", "orcamento": null}
-"Preciso de um carro familiar até 60 mil" → {"usoPrincipal": "familia", "orcamento": 60000}
-"Carro para trabalho, uns 40k" → {"usoPrincipal": "trabalho", "orcamento": 40000}
+"60 mil" → {"usoPrincipal": null, "orcamento": 60000}
+"uns 40k" → {"usoPrincipal": null, "orcamento": 40000}
+"50000" → {"usoPrincipal": null, "orcamento": 50000}
+"trabalho, 70 mil" → {"usoPrincipal": "trabalho", "orcamento": 70000}
 
 JSON:`;
 
@@ -300,17 +334,54 @@ JSON:`;
         maxTokens: 100
       });
 
-      const json = JSON.parse(response);
+      // Try to parse JSON from response
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return { usoPrincipal: null, orcamento: budgetMatch };
+      }
+
+      const json = JSON.parse(jsonMatch[0]);
 
       return {
-        usoPrincipal: json.usoPrincipal === 'null' ? null : json.usoPrincipal,
-        orcamento: json.orcamento
+        usoPrincipal: json.usoPrincipal === 'null' || json.usoPrincipal === null ? null : json.usoPrincipal,
+        orcamento: json.orcamento || budgetMatch
       };
 
     } catch (error) {
       logger.error({ error }, 'Error extracting context');
-      return { usoPrincipal: null, orcamento: null };
+      // Fallback to simple budget extraction
+      return { usoPrincipal: null, orcamento: budgetMatch };
     }
+  }
+
+  /**
+   * Simple budget extraction without LLM
+   */
+  private extractBudgetSimple(message: string): number | null {
+    const lower = message.toLowerCase().replace(/\s+/g, '');
+
+    // Match patterns like: 50mil, 50k, 50000, R$50.000, 50.000
+    const patterns = [
+      /(\d+)\s*mil/i,           // 50 mil, 50mil
+      /(\d+)\s*k/i,             // 50k, 50K
+      /r?\$?\s*(\d{2,3})\.?(\d{3})/i,  // R$ 50.000, 50000, 50.000
+      /^(\d{4,6})$/,            // Just numbers: 50000
+    ];
+
+    for (const pattern of patterns) {
+      const match = message.match(pattern);
+      if (match) {
+        if (pattern.source.includes('mil') || pattern.source.includes('k')) {
+          return parseInt(match[1]) * 1000;
+        }
+        if (match[2]) {
+          return parseInt(match[1] + match[2]);
+        }
+        return parseInt(match[1]);
+      }
+    }
+
+    return null;
   }
 }
 
