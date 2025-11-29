@@ -218,21 +218,49 @@ Temos 20 SUVs e 16 sedans no estoque. Para que você pretende usar o carro?"`;
         }
       }
 
-      // 3. Check if user mentioned specific model (e.g., "Spin", "Civic")
+      // 3. Check if user mentioned specific model (e.g., "Spin", "Civic") or brand (e.g., "Jeep")
       const hasSpecificModel = !!(extracted.extracted.model || extracted.extracted.brand);
 
       if (hasSpecificModel) {
+        const requestedBrand = extracted.extracted.brand?.toLowerCase();
+        const requestedModel = extracted.extracted.model?.toLowerCase();
+        
         logger.info({
-          brand: extracted.extracted.brand,
-          model: extracted.extracted.model
-        }, 'VehicleExpert: Specific model mentioned, searching directly');
+          brand: requestedBrand,
+          model: requestedModel
+        }, 'VehicleExpert: Specific model/brand mentioned, searching directly');
 
-        // Search for specific model
+        // Search for specific model/brand
         const result = await this.getRecommendations(updatedProfile);
 
-        if (result.recommendations.length > 0) {
+        // Filter results to only include vehicles that ACTUALLY match the requested brand/model
+        const matchingResults = result.recommendations.filter(rec => {
+          const vehicleBrand = rec.vehicle.brand?.toLowerCase() || '';
+          const vehicleModel = rec.vehicle.model?.toLowerCase() || '';
+          
+          // If user requested a specific brand, vehicle must match that brand
+          if (requestedBrand && !vehicleBrand.includes(requestedBrand)) {
+            return false;
+          }
+          
+          // If user requested a specific model, vehicle must match that model
+          if (requestedModel && !vehicleModel.includes(requestedModel)) {
+            return false;
+          }
+          
+          return true;
+        });
+
+        logger.info({
+          totalResults: result.recommendations.length,
+          matchingResults: matchingResults.length,
+          requestedBrand,
+          requestedModel
+        }, 'VehicleExpert: Filtered results for specific brand/model');
+
+        if (matchingResults.length > 0) {
           const formattedResponse = await this.formatRecommendations(
-            result.recommendations,
+            matchingResults,
             updatedProfile,
             context
           );
@@ -242,7 +270,7 @@ Temos 20 SUVs e 16 sedans no estoque. Para que você pretende usar o carro?"`;
             extractedPreferences: extracted.extracted,
             needsMoreInfo: [],
             canRecommend: true,
-            recommendations: result.recommendations,
+            recommendations: matchingResults,
             nextMode: 'recommendation',
             metadata: {
               processingTime: Date.now() - startTime,
