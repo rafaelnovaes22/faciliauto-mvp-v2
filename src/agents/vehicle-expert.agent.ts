@@ -300,19 +300,21 @@ Quer responder algumas perguntas rápidas para eu te dar sugestões personalizad
           
           logger.info({ userMessage, askedBodyType: normalizedBodyType }, 'User asking about vehicle availability');
           
-          // Update profile with the asked bodyType and get recommendations
-          if (normalizedBodyType) {
-            updatedProfile.bodyType = normalizedBodyType;
-            if (!updatedProfile.priorities) {
-              updatedProfile.priorities = [normalizedBodyType];
-            }
-          }
+          // Para perguntas de disponibilidade, buscar DIRETO por categoria (sem filtros extras)
+          const categoryResults = await vehicleSearchAdapter.search(`${normalizedBodyType}`, {
+            bodyType: normalizedBodyType,
+            limit: 5,  // Retornar até 5 veículos da categoria
+          });
           
-          const result = await this.getRecommendations(updatedProfile);
-          
-          if (result.recommendations.length === 0 || result.noPickupsFound) {
+          if (categoryResults.length === 0) {
+            const categoryName = askedBodyType === 'pickup' || askedBodyType === 'picape' ? 'picapes' :
+              askedBodyType === 'suv' ? 'SUVs' :
+              askedBodyType === 'sedan' ? 'sedans' :
+              askedBodyType === 'hatch' ? 'hatches' :
+              `${askedBodyType}s`;
+            
             return {
-              response: `No momento não temos ${askedBodyType || normalizedBodyType}s disponíveis no estoque. 😕\n\nQuer que eu busque outras opções para você?`,
+              response: `No momento não temos ${categoryName} disponíveis no estoque. 😕\n\nQuer que eu busque outras opções para você?`,
               extractedPreferences: { ...extracted.extracted, bodyType: normalizedBodyType, _waitingForSuggestionResponse: true },
               needsMoreInfo: [],
               canRecommend: false,
@@ -325,19 +327,35 @@ Quer responder algumas perguntas rápidas para eu te dar sugestões personalizad
             };
           }
           
-          // Found vehicles - format and return
-          const formattedResponse = await this.formatRecommendations(
-            result.recommendations,
-            updatedProfile,
-            context
-          );
+          // Found vehicles - format for category availability response
+          const categoryName = askedBodyType === 'pickup' || askedBodyType === 'picape' ? 'picapes' :
+            askedBodyType === 'suv' ? 'SUVs' :
+            askedBodyType === 'sedan' ? 'sedans' :
+            askedBodyType === 'hatch' ? 'hatches' :
+            `${askedBodyType}s`;
+          
+          const intro = `Temos ${categoryResults.length} ${categoryName} disponíveis! 🚗\n\n`;
+          const vehicleList = categoryResults.map((rec, i) => {
+            const v = rec.vehicle;
+            const emoji = i === 0 ? '🏆' : i === 1 ? '🥈' : i === 2 ? '🥉' : '⭐';
+            return `${emoji} ${v.brand} ${v.model} ${v.year}\n` +
+              `   💰 R$ ${v.price.toLocaleString('pt-BR')}\n` +
+              `   📍 ${v.mileage.toLocaleString('pt-BR')}km`;
+          }).join('\n\n');
+          
+          const footer = '\n\n💬 Quer saber mais detalhes de algum? Me diz qual te interessou!';
+          
+          // Update profile with the asked bodyType
+          if (normalizedBodyType) {
+            updatedProfile.bodyType = normalizedBodyType;
+          }
           
           return {
-            response: formattedResponse,
+            response: intro + vehicleList + footer,
             extractedPreferences: { ...extracted.extracted, bodyType: normalizedBodyType },
             needsMoreInfo: [],
             canRecommend: true,
-            recommendations: result.recommendations,
+            recommendations: categoryResults,
             nextMode: 'recommendation',
             metadata: {
               processingTime: Date.now() - startTime,
