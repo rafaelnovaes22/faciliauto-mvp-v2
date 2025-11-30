@@ -139,38 +139,62 @@ Temos 20 SUVs e 16 sedans no estoque. Para que você pretende usar o carro?"`;
       // 2.5. Check if we offered to ask questions for suggestions and user is responding
       const wasWaitingForSuggestionResponse = context.profile?._waitingForSuggestionResponse;
       if (wasWaitingForSuggestionResponse) {
-        const userAccepts = this.detectAffirmativeResponse(userMessage);
+        // First, check if user is asking a NEW question or making a new request
+        const isNewQuestion = this.detectUserQuestion(userMessage);
+        const hasNewPreferences = Object.keys(extracted.extracted).length > 0 && 
+          (extracted.extracted.bodyType || extracted.extracted.brand || extracted.extracted.model || extracted.extracted.budget);
         
-        if (userAccepts) {
-          logger.info({ userMessage, searchedItem: context.profile?._searchedItem }, 'User accepted to answer questions for suggestions');
+        // If user is asking a question or has new preferences, process normally (don't treat as yes/no)
+        if (isNewQuestion || hasNewPreferences) {
+          logger.info({ 
+            userMessage, 
+            isNewQuestion, 
+            hasNewPreferences,
+            extracted: extracted.extracted 
+          }, 'User asked new question while waiting for suggestion response, processing normally');
           
-          // Start asking questions to build profile for suggestions
-          return {
-            response: `Ótimo! Vou te fazer algumas perguntas rápidas para encontrar o carro ideal pra você. 🚗\n\n💰 Qual seu orçamento aproximado?`,
-            extractedPreferences: { ...extracted.extracted, _waitingForSuggestionResponse: false, _searchedItem: undefined },
-            needsMoreInfo: ['budget', 'usage', 'people'],
-            canRecommend: false,
-            nextMode: 'discovery',
-            metadata: {
-              processingTime: Date.now() - startTime,
-              confidence: 0.9,
-              llmUsed: 'gpt-4o-mini'
-            }
-          };
+          // Clear the waiting flag and continue to normal processing
+          updatedProfile._waitingForSuggestionResponse = false;
+          updatedProfile._searchedItem = undefined;
+          // Don't return here - let the flow continue to handle the new question/request
         } else {
-          // User declined - offer alternatives
-          return {
-            response: `Sem problemas! 🙂 Se mudar de ideia ou quiser ver outros veículos, é só me chamar!`,
-            extractedPreferences: { ...extracted.extracted, _waitingForSuggestionResponse: false, _searchedItem: undefined },
-            needsMoreInfo: [],
-            canRecommend: false,
-            nextMode: 'discovery',
-            metadata: {
-              processingTime: Date.now() - startTime,
-              confidence: 0.8,
-              llmUsed: 'gpt-4o-mini'
-            }
-          };
+          const userAccepts = this.detectAffirmativeResponse(userMessage);
+          const userDeclines = this.detectNegativeResponse(userMessage);
+          
+          if (userAccepts) {
+            logger.info({ userMessage, searchedItem: context.profile?._searchedItem }, 'User accepted to answer questions for suggestions');
+            
+            // Start asking questions to build profile for suggestions
+            return {
+              response: `Ótimo! Vou te fazer algumas perguntas rápidas para encontrar o carro ideal pra você. 🚗\n\n💰 Qual seu orçamento aproximado?`,
+              extractedPreferences: { ...extracted.extracted, _waitingForSuggestionResponse: false, _searchedItem: undefined },
+              needsMoreInfo: ['budget', 'usage', 'people'],
+              canRecommend: false,
+              nextMode: 'discovery',
+              metadata: {
+                processingTime: Date.now() - startTime,
+                confidence: 0.9,
+                llmUsed: 'gpt-4o-mini'
+              }
+            };
+          } else if (userDeclines) {
+            // User explicitly declined
+            return {
+              response: `Sem problemas! 🙂 Se mudar de ideia ou quiser ver outros veículos, é só me chamar!`,
+              extractedPreferences: { ...extracted.extracted, _waitingForSuggestionResponse: false, _searchedItem: undefined },
+              needsMoreInfo: [],
+              canRecommend: false,
+              nextMode: 'discovery',
+              metadata: {
+                processingTime: Date.now() - startTime,
+                confidence: 0.8,
+                llmUsed: 'gpt-4o-mini'
+              }
+            };
+          }
+          // If neither yes nor no, continue processing normally
+          updatedProfile._waitingForSuggestionResponse = false;
+          updatedProfile._searchedItem = undefined;
         }
       }
 
@@ -261,7 +285,67 @@ Quer responder algumas perguntas rápidas para eu te dar sugestões personalizad
 
       // 5. Route based on question detection
       if (isUserQuestion) {
-        // Answer user's question using RAG
+        // Check if it's a question about vehicle availability (e.g., "qual pickup você tem?")
+        const availabilityKeywords = ['tem', 'têm', 'disponível', 'disponivel', 'estoque', 'vocês', 'voces'];
+        const vehicleTypeKeywords = ['pickup', 'picape', 'suv', 'sedan', 'hatch', 'caminhonete'];
+        const messageLower = userMessage.toLowerCase();
+        
+        const isAvailabilityQuestion = availabilityKeywords.some(kw => messageLower.includes(kw)) &&
+          vehicleTypeKeywords.some(kw => messageLower.includes(kw));
+        
+        if (isAvailabilityQuestion) {
+          // Detect which vehicle type user is asking about
+          const askedBodyType = vehicleTypeKeywords.find(kw => messageLower.includes(kw));
+          const normalizedBodyType = askedBodyType === 'picape' || askedBodyType === 'caminhonete' ? 'pickup' : askedBodyType;
+          
+          logger.info({ userMessage, askedBodyType: normalizedBodyType }, 'User asking about vehicle availability');
+          
+          // Update profile with the asked bodyType and get recommendations
+          updatedProfile.bodyType = normalizedBodyType;
+          if (!updatedProfile.priorities) {
+            updatedProfile.priorities = [normalizedBodyType];
+          }
+          
+          const result = await this.getRecommendations(updatedProfile);
+          
+          if (result.recommendations.length === 0 || result.noPickupsFound) {
+            return {
+              response: `No momento não temos ${askedBodyType || normalizedBodyType}s disponíveis no estoque. 😕\n\nQuer que eu busque outras opções para você?`,
+              extractedPreferences: { ...extracted.extracted, bodyType: normalizedBodyType, _waitingForSuggestionResponse: true },
+              needsMoreInfo: [],
+              canRecommend: false,
+              nextMode: 'clarification',
+              metadata: {
+                processingTime: Date.now() - startTime,
+                confidence: 0.9,
+                llmUsed: 'gpt-4o-mini'
+              }
+            };
+          }
+          
+          // Found vehicles - format and return
+          const formattedResponse = await this.formatRecommendations(
+            result.recommendations,
+            updatedProfile,
+            context
+          );
+          
+          return {
+            response: formattedResponse,
+            extractedPreferences: { ...extracted.extracted, bodyType: normalizedBodyType },
+            needsMoreInfo: [],
+            canRecommend: true,
+            recommendations: result.recommendations,
+            nextMode: 'recommendation',
+            metadata: {
+              processingTime: Date.now() - startTime,
+              confidence: 0.9,
+              llmUsed: 'gpt-4o-mini'
+            }
+          };
+        }
+        
+        // Regular question - Answer using RAG
         const answer = await this.answerQuestion(userMessage, context, updatedProfile);
 
         return {
@@ -394,6 +478,10 @@ Quer responder algumas perguntas rápidas para eu te dar sugestões personalizad
       /pode (me )?(explicar|dizer|falar)/i,
       /gostaria de saber/i,
       /queria saber/i,
+      /voc[êe]s?\s*tem/i,                       // "você tem", "vocês tem"
+      /tem\s*(disponível|disponivel)/i,          // "tem disponível"
+      /o que\s*(voc[êe]s?)?\s*tem/i,             // "o que você tem"
+      /quais?\s*(carro|veículo|modelo|opç)/i,   // "qual carro", "quais opções"
     ];
 
     return questionPatterns.some(pattern => pattern.test(message.trim()));
@@ -438,6 +526,27 @@ Quer responder algumas perguntas rápidas para eu te dar sugestões personalizad
     }
 
     return affirmativePatterns.some(pattern => pattern.test(normalized));
+  }
+
+  /**
+   * Detect if user response is negative (declining a suggestion)
+   */
+  private detectNegativeResponse(message: string): boolean {
+    const normalized = message.toLowerCase().trim();
+    
+    const negativePatterns = [
+      /^(não|nao|n|nn|nope|nunca)$/i,
+      /não\s*(quero|preciso|obrigado)/i,
+      /deixa\s*(pra lá|quieto)/i,
+      /sem\s*(interesse|necessidade)/i,
+      /^(nada|deixa|esquece)$/i,
+      /não,?\s*obrigado/i,
+      /agora\s*não/i,
+      /depois/i,
+      /talvez\s*depois/i,
+    ];
+
+    return negativePatterns.some(pattern => pattern.test(normalized));
   }
 
   /**
