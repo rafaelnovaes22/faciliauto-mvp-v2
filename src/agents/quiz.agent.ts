@@ -170,6 +170,13 @@ export class QuizAgent {
     if (question.type === 'text') {
       // For budget and km, extract numbers
       if (question.id === 'budget' || question.id === 'maxKm') {
+        // Check if original contains negative sign
+        if (cleanAnswer.includes('-')) {
+          return {
+            valid: false,
+            error: '❌ Por favor, digite um valor positivo.',
+          };
+        }
         const number = parseInt(cleanAnswer.replace(/\D/g, ''));
         if (isNaN(number) || number <= 0) {
           return {

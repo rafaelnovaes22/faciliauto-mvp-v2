@@ -144,9 +144,9 @@ export class GuardrailsService {
       /disregard\s+(previous|above|all|the)\s+(instructions|prompts|rules)/i,
       
       // System prompt manipulation (Portuguese)
-      /ignore\s+(as|todas)\s+(instru[çc][õo]es|regras|prompts)/i,
-      /esqueça\s+(as|todas)\s+(instru[çc][õo]es|regras)/i,
-      /desconsidere\s+(as|todas)\s+(instru[çc][õo]es|regras)/i,
+      /ignore\s+(as|todas)?\s*(instru[çc][õo]es|regras|prompts)/i,
+      /esque[çc]a\s+(as\s+|todas\s+|todas\s+as\s+)?(instru[çc][õo]es|regras)/i,
+      /desconsidere\s+(as|todas)?\s*(instru[çc][õo]es|regras)/i,
       
       // Role manipulation (English)
       /you\s+are\s+now/i,
@@ -186,7 +186,8 @@ export class GuardrailsService {
       
       // Prompt extraction (Portuguese)
       /me\s+(diga|mostre|revele)\s+(seu|sua|o|a)\s+(prompt|instru[çc][ãa]o|sistema)/i,
-      /qual\s+([ée]|s[ãa]o)\s+(seu|sua|suas)\s+(instru[çc][õo]es|prompt|regras)/i,
+      /qual\s+([ée]|s[ãa]o)\s+(seu|sua|suas|tuas?)\s+(instru[çc][õo]es?|prompt|regras?)/i,
+      /sua\s+instru[çc][ãa]o/i,
       
       // SQL injection patterns (extra safety)
       /;\s*(drop|delete|insert|update)\s+/i,

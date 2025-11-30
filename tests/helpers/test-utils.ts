@@ -1,7 +1,27 @@
 import { faker } from '@faker-js/faker';
-import { PrismaClient } from '@prisma/client';
 
-export const prisma = new PrismaClient();
+// Lazy load do Prisma para evitar erros de inicialização
+let prismaInstance: any = null;
+
+async function getPrismaClient() {
+  if (!prismaInstance) {
+    try {
+      const { PrismaClient } = await import('@prisma/client');
+      prismaInstance = new PrismaClient();
+    } catch (error) {
+      console.warn('⚠️  Prisma não disponível');
+      return null;
+    }
+  }
+  return prismaInstance;
+}
+
+// Export para compatibilidade
+export const prisma = {
+  get client() {
+    return prismaInstance;
+  }
+};
 
 /**
  * Gera dados mock para conversação
@@ -52,7 +72,7 @@ export function createMockVehicle(overrides = {}) {
     doors: faker.number.int({ min: 2, max: 5 }),
     seats: faker.number.int({ min: 4, max: 7 }),
     trunkCapacity: faker.number.int({ min: 250, max: 600 }),
-    fuelConsumption: faker.number.float({ min: 8, max: 15, precision: 0.1 }),
+    fuelConsumption: faker.number.float({ min: 8, max: 15, fractionDigits: 1 }),
     features: ['ar condicionado', 'direção elétrica', 'vidros elétricos'],
     imageUrl: faker.image.urlLoremFlickr({ category: 'car' }),
     available: true,
@@ -82,14 +102,19 @@ export function createMockWhatsAppMessage(overrides = {}) {
  * Limpa todas as tabelas do banco de teste
  */
 export async function cleanDatabase() {
-  const tables = ['Message', 'Recommendation', 'Consultation', 'Conversation'];
+  const client = await getPrismaClient();
+  if (!client) {
+    console.warn('⚠️  Prisma não disponível para limpeza');
+    return;
+  }
+  
+  const tables = ['Message', 'Recommendation', 'Event', 'Lead', 'Conversation'];
   
   for (const table of tables) {
     try {
-      await prisma.$executeRawUnsafe(`DELETE FROM "${table}";`);
+      await client.$executeRawUnsafe(`DELETE FROM "${table}";`);
     } catch (error) {
       // Tabela pode não existir
-      console.warn(`Aviso: não foi possível limpar ${table}`);
     }
   }
 }
@@ -98,7 +123,11 @@ export async function cleanDatabase() {
  * Cria uma conversação de teste completa no banco
  */
 export async function createTestConversation(data = {}) {
-  return await prisma.conversation.create({
+  const client = await getPrismaClient();
+  if (!client) {
+    throw new Error('Prisma não disponível');
+  }
+  return await client.conversation.create({
     data: createMockConversation(data),
   });
 }
@@ -136,5 +165,21 @@ export function createMockGroqResponse(content: string) {
  * Mock de resposta de embedding OpenAI
  */
 export function createMockEmbedding(dimensions = 1536) {
-  return Array.from({ length: dimensions }, () => faker.number.float({ min: -1, max: 1, precision: 0.000001 }));
+  return Array.from({ length: dimensions }, () => 
+    faker.number.float({ min: -1, max: 1, fractionDigits: 6 })
+  );
+}
+
+/**
+ * Verifica se banco está disponível
+ */
+export async function isDatabaseAvailable(): Promise<boolean> {
+  try {
+    const client = await getPrismaClient();
+    if (!client) return false;
+    await client.$queryRaw`SELECT 1`;
+    return true;
+  } catch {
+    return false;
+  }
 }

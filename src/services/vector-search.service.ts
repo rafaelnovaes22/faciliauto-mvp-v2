@@ -175,7 +175,13 @@ export class VectorSearchService {
         };
       });
 
-      scoredVehicles.sort((a, b) => b.matchScore - a.matchScore);
+      // Ordenar por matchScore, com desempate por preço (desc), km (asc), ano (desc)
+      scoredVehicles.sort((a, b) => {
+        if (b.matchScore !== a.matchScore) return b.matchScore - a.matchScore;
+        if (b.price !== a.price) return b.price - a.price;
+        if (a.mileage !== b.mileage) return a.mileage - b.mileage;
+        return b.year - a.year;
+      });
 
       return scoredVehicles.slice(0, limit);
     } catch (error: any) {
@@ -217,7 +223,7 @@ export class VectorSearchService {
       const vehicles = await prisma.vehicle.findMany({
         where,
         take: limit * 2,
-        orderBy: [{ preco: 'asc' }, { ano: 'desc' }],
+        orderBy: [{ preco: 'desc' }, { km: 'asc' }, { ano: 'desc' }],
       });
 
       const scoredVehicles = vehicles.map((vehicle) => {
@@ -242,7 +248,13 @@ export class VectorSearchService {
         };
       });
 
-      scoredVehicles.sort((a, b) => b.matchScore - a.matchScore);
+      // Ordenar por matchScore, com desempate por preço (desc), km (asc), ano (desc)
+      scoredVehicles.sort((a, b) => {
+        if (b.matchScore !== a.matchScore) return b.matchScore - a.matchScore;
+        if (b.price !== a.price) return b.price - a.price;
+        if (a.mileage !== b.mileage) return a.mileage - b.mileage;
+        return b.year - a.year;
+      });
 
       return scoredVehicles.slice(0, limit);
     } catch (error: any) {

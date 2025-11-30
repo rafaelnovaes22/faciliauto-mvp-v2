@@ -68,6 +68,11 @@ export class VehicleSearchAdapter {
           ...(filters.aptoTrabalho && { aptoTrabalho: true }),
         },
         take: limit,
+        orderBy: [
+          { preco: 'desc' },  // Mais caro primeiro
+          { km: 'asc' },      // Menos rodado
+          { ano: 'desc' },    // Mais novo
+        ],
       });
 
       // Convert to VehicleRecommendation format

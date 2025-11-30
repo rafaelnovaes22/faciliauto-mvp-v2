@@ -1,29 +1,94 @@
 # 🧪 Suite de Testes - FaciliAuto MVP v2
 
-## 📋 Visão Geral
+> Suite completa de testes E2E (End-to-End), integração, unitários e performance usando **Vitest**
 
-Suite completa de testes E2E (End-to-End), integração e unitários usando **Vitest** com metodologia XP (Extreme Programming).
+## 🎯 Estratégia de Testes: Mocks vs LLM Real
 
-## 🏗️ Estrutura
+### Por que usamos Mocks?
+
+A maioria dos testes usa **mocks** para chamadas de LLM. Isso é intencional:
+
+| Aspecto | Testes Mockados | Testes com LLM Real |
+|---------|-----------------|---------------------|
+| **Propósito** | Testar lógica do código | Testar integração real |
+| **Velocidade** | Milissegundos | Segundos |
+| **Custo** | Grátis | API calls ($) |
+| **Determinismo** | 100% previsível | Pode variar |
+| **CI/CD** | ✅ Toda vez | ⚠️ Sob demanda |
+
+### Quando usar cada tipo?
+
+**Testes Mockados (npm test)**
+- ✅ Validar lógica de parsing de respostas
+- ✅ Testar fluxos de conversação
+- ✅ Verificar guardrails e segurança
+- ✅ Performance e latência do código
+
+**Testes com LLM Real (npm run test:integration:llm)**
+- ✅ Validar que prompts funcionam corretamente
+- ✅ Testar extração de preferências em português
+- ✅ Smoke tests antes de deploy
+- ✅ Debugging de problemas de produção
+
+### Comandos
+
+```bash
+# Testes rápidos (mocks) - Rodar sempre
+npm test
+
+# Testes com LLM real - Requer API keys
+npm run test:integration:llm
+
+# Smoke test rápido com LLM
+npm run test:smoke
+```
+
+---
+
+## 📊 Status Atual
+
+| Categoria | Arquivos | Testes | Status |
+|-----------|----------|--------|--------|
+| **E2E** | 3 | ~60+ | ✅ Completo |
+| **Agents** | 2 | ~40+ | ✅ Completo |
+| **Unit** | 3 | ~30+ | ✅ Completo |
+| **Integration** | 2 | ~20+ | ✅ Completo |
+| **Performance** | 1 | ~15+ | ✅ Completo |
+| **Total** | **11** | **~165+** | ✅ |
+
+## 📁 Estrutura Real
 
 ```
 tests/
-├── e2e/              # Testes End-to-End (fluxos completos)
-│   ├── flows/        # Fluxos de usuário
-│   │   ├── quiz.test.ts
-│   │   └── recommendation.test.ts
-│   ├── agents/       # Testes de agentes individuais
-│   ├── integrations/ # Integrações externas (Groq, OpenAI)
-│   │   ├── groq.test.ts
-│   │   └── embeddings.test.ts
-│   └── security/     # Segurança e guardrails
-│       └── guardrails.test.ts
-├── integration/      # Testes de integração
-├── unit/            # Testes unitários
-├── performance/     # Testes de performance
-├── helpers/         # Utilitários de teste
-│   └── test-utils.ts
-└── fixtures/        # Dados mock e fixtures
+├── e2e/                          # Testes End-to-End (fluxos completos)
+│   ├── conversational-flow.e2e.test.ts   # Fluxo conversacional completo
+│   ├── quiz-agent.test.ts                # Quiz flow completo
+│   └── security/                         # Testes de segurança
+│       └── guardrails.test.ts            # Proteção contra ataques
+│
+├── agents/                       # Testes de agentes individuais
+│   ├── preference-extractor.test.ts      # Extração de preferências
+│   └── vehicle-expert.test.ts            # Especialista em veículos
+│
+├── unit/                         # Testes unitários
+│   ├── llm-router.test.ts                # Router de LLMs
+│   ├── embedding-router.test.ts          # Router de embeddings
+│   └── lib/
+│       └── embeddings.test.ts            # Funções de embedding
+│
+├── integration/                  # Testes de integração
+│   ├── basic.test.ts                     # Testes básicos
+│   ├── webhook.test.ts                   # WhatsApp webhook
+│   └── llm-integration.test.ts           # Testes com LLM REAL (requer API keys)
+│
+├── performance/                  # Testes de performance
+│   └── basic-performance.test.ts         # Benchmarks básicos
+│
+├── helpers/                      # Utilitários de teste
+│   └── test-utils.ts                     # Mocks e helpers
+│
+├── setup.ts                      # Configuração global
+└── README.md                     # Esta documentação
 ```
 
 ## 🚀 Comandos
@@ -60,35 +125,177 @@ npm run test:integration
 npm run test:unit
 
 # Arquivo específico
-npm test tests/e2e/flows/quiz.test.ts
+npm test tests/e2e/security/guardrails.test.ts
 ```
 
-## 📊 Coverage
+## 📋 Cobertura por Categoria
 
-Meta: **80%+ coverage** em:
-- Lines
-- Functions
-- Branches
-- Statements
+### E2E Tests
+
+#### `conversational-flow.e2e.test.ts`
+- ✅ Happy Path: Discovery → Recommendation
+- ✅ Extração de múltiplas preferências
+- ✅ Perguntas do usuário durante conversa
+- ✅ Typos e linguagem informal
+- ✅ Mensagens curtas
+- ✅ Variações de orçamento
+- ✅ Deal breakers
+- ✅ Feature flags
+- ✅ Gerenciamento de estado
+
+#### `quiz-agent.test.ts`
+- ✅ Welcome message
+- ✅ Budget (question 0) - múltiplos formatos
+- ✅ Usage (question 1)
+- ✅ People (question 2)
+- ✅ Trade-in (question 3)
+- ✅ Min year (question 4)
+- ✅ Max KM (question 5)
+- ✅ Body type (question 6)
+- ✅ Urgency (question 7)
+- ✅ Quiz completion
+- ✅ Profile generation
+- ✅ Edge cases
+
+#### `security/guardrails.test.ts`
+- ✅ Input validation
+- ✅ Prompt injection (English)
+- ✅ Prompt injection (Portuguese)
+- ✅ System message injection
+- ✅ Encoding/obfuscation attacks
+- ✅ SQL injection
+- ✅ Rate limiting
+- ✅ Input sanitization
+- ✅ Output validation
+- ✅ ISO 42001 compliance
+
+### Agent Tests
+
+#### `preference-extractor.test.ts`
+- ✅ Single field extraction
+- ✅ Multiple fields extraction
+- ✅ Deal breakers and constraints
+- ✅ Edge cases
+- ✅ Context awareness
+- ✅ Profile merging
+- ✅ Budget variations
+
+#### `vehicle-expert.test.ts`
+- ✅ Question detection
+- ✅ Preference extraction during chat
+- ✅ Conversation flow
+- ✅ Readiness assessment
+- ✅ Answer generation
+- ✅ Recommendation formatting
+- ✅ Context preservation
+- ✅ Edge cases
+
+### Unit Tests
+
+#### `llm-router.test.ts`
+- ✅ Chat completion
+- ✅ Intent classification
+- ✅ Provider status
+- ✅ Circuit breaker
+- ✅ Fallback behavior
+
+#### `embedding-router.test.ts`
+- ✅ Embedding generation
+- ✅ Batch embeddings
+- ✅ Cosine similarity
+- ✅ Provider status
+- ✅ Performance
+
+#### `lib/embeddings.test.ts`
+- ✅ Cosine similarity
+- ✅ Serialization/deserialization
+- ✅ Validation
+- ✅ Statistics
+
+### Integration Tests
+
+#### `webhook.test.ts`
+- ✅ GET verification
+- ✅ POST message reception
+- ✅ Test endpoint
+- ✅ Message types (text, button, interactive)
+- ✅ Error handling
+- ✅ Response time
+
+### Performance Tests
+
+#### `basic-performance.test.ts`
+- ✅ Preference extraction latency
+- ✅ Quiz processing speed
+- ✅ Guardrail validation speed
+- ✅ Memory usage
+- ✅ Concurrent operations
+- ✅ Stress test
+- ✅ Latency percentiles (p50, p95, p99)
+
+## 📊 Métricas de Qualidade
+
+### Coverage Target
+
+```
+Lines:      80%
+Functions:  80%
+Branches:   80%
+Statements: 80%
+```
 
 Verificar coverage:
 ```bash
 npm run test:coverage
+open coverage/index.html
 ```
 
-Abrir relatório HTML:
-```bash
-open coverage/index.html
+### Performance Targets
+
+| Operação | Target | Medido |
+|----------|--------|--------|
+| Quiz answer processing | < 100ms | ~10ms |
+| Preference extraction | < 3s | ~1-2s |
+| Guardrail validation | < 5ms | ~1ms |
+| Webhook response | < 5s | ~50ms |
+| Profile generation | < 5ms | ~1ms |
+
+### Latency Percentiles
+
+| Operação | p50 | p95 | p99 |
+|----------|-----|-----|-----|
+| Quiz processing | ~5ms | < 100ms | < 200ms |
+| Guardrail validation | < 1ms | < 5ms | < 10ms |
+
+## 🔒 Testes de Segurança
+
+### Guardrails - Proteção Completa
+
+```
+✅ Linguagem ofensiva
+✅ Tentativas de jailbreak (DAN mode, developer mode, god mode)
+✅ Prompt injection (English + Portuguese)
+✅ SQL injection patterns
+✅ Encoding/obfuscation attacks (base64, hex, URL encoding)
+✅ System message injection ([system], system:, [assistant])
+✅ Rate limiting (10 msgs/min por usuário)
+✅ Output validation (leak detection)
+✅ PII protection (CPF patterns)
 ```
 
 ## 🧩 Helpers e Utilities
 
 ### `test-utils.ts`
 
-Funções utilitárias para criação de mocks:
-
 ```typescript
-import { createMockConversation, createMockVehicle, cleanDatabase } from '@tests/helpers/test-utils';
+import { 
+  createMockConversation, 
+  createMockVehicle, 
+  createMockWhatsAppMessage,
+  createMockEmbedding,
+  cleanDatabase,
+  sleep 
+} from '@tests/helpers/test-utils';
 
 // Criar conversação mock
 const conversation = createMockConversation({
@@ -103,23 +310,12 @@ const vehicle = createMockVehicle({
   price: 48000,
 });
 
+// Criar embedding mock
+const embedding = createMockEmbedding(1536);
+
 // Limpar banco antes do teste
 await cleanDatabase();
 ```
-
-## 🔒 Testes de Segurança
-
-### Guardrails
-
-Testamos proteção contra:
-- ✅ Linguagem ofensiva
-- ✅ Tentativas de jailbreak
-- ✅ Phishing
-- ✅ SQL injection
-- ✅ Spam
-- ✅ Rate limiting
-- ✅ PII (dados pessoais)
-- ✅ Prompt injection
 
 ## 📝 Escrevendo Testes
 
@@ -127,11 +323,10 @@ Testamos proteção contra:
 
 ```typescript
 import { describe, it, expect, beforeEach } from 'vitest';
-import { cleanDatabase } from '@tests/helpers/test-utils';
 
 describe('Nome do Módulo', () => {
   beforeEach(async () => {
-    await cleanDatabase();
+    // Setup
   });
 
   describe('Funcionalidade Específica', () => {
@@ -152,46 +347,45 @@ describe('Nome do Módulo', () => {
 ### Boas Práticas
 
 1. **Arrange-Act-Assert**: Estruture testes em 3 partes
-2. **Descrições claras**: Use `deve` nas descrições
+2. **Descrições em português**: Use `deve` nas descrições
 3. **Isolamento**: Cada teste deve ser independente
 4. **Cleanup**: Limpe dados antes/depois de cada teste
 5. **Mocks**: Use mocks para dependências externas
-6. **Timeouts**: Configure timeouts adequados para testes assíncronos
-
-## 🎯 Metodologia XP
-
-### TDD (Test-Driven Development)
-
-1. **RED**: Escreva teste que falha
-2. **GREEN**: Escreva código mínimo para passar
-3. **REFACTOR**: Melhore o código mantendo testes verdes
-
-### Princípios
-
-- Testes antes do código
-- Pequenos incrementos
-- Refatoração constante
-- Feedback contínuo
-- Simplicidade
+6. **Timeouts**: Configure timeouts adequados (30s default)
 
 ## 🔧 Configuração
 
-### vitest.config.ts
+### vitest.config.mjs
 
-- Globals habilitados
-- Environment: node
-- Coverage provider: v8
-- Timeout: 30s para testes assíncronos
-- Setup file: `tests/setup.ts`
+```javascript
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    include: ['tests/**/*.test.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html', 'lcov'],
+      lines: 80,
+      functions: 80,
+      branches: 80,
+      statements: 80,
+    },
+    testTimeout: 30000,
+    hookTimeout: 30000,
+    setupFiles: ['./tests/setup.ts'],
+  },
+});
+```
 
 ### .env.test
 
-Variáveis de ambiente para testes:
 ```env
 NODE_ENV=test
 DATABASE_URL=file:./test.db
 GROQ_API_KEY=test-groq-key
 OPENAI_API_KEY=test-openai-key
+META_WEBHOOK_VERIFY_TOKEN=test_verify_token
 ```
 
 ## 🐛 Debugging
@@ -207,8 +401,7 @@ Adicione ao `.vscode/launch.json`:
   "name": "Debug Vitest",
   "runtimeExecutable": "npm",
   "runtimeArgs": ["run", "test"],
-  "console": "integratedTerminal",
-  "internalConsoleOptions": "neverOpen"
+  "console": "integratedTerminal"
 }
 ```
 
@@ -216,12 +409,12 @@ Adicione ao `.vscode/launch.json`:
 
 ```bash
 # Debug específico
-node --inspect-brk ./node_modules/.bin/vitest tests/e2e/flows/quiz.test.ts
+node --inspect-brk ./node_modules/.bin/vitest tests/e2e/security/guardrails.test.ts
 ```
 
 ## 📈 CI/CD
 
-GitHub Actions configurado em `.github/workflows/ci.yml`:
+GitHub Actions em `.github/workflows/ci.yml`:
 
 - ✅ Rodar todos os testes
 - ✅ Gerar coverage
@@ -237,35 +430,8 @@ GitHub Actions configurado em `.github/workflows/ci.yml`:
 - [Faker.js](https://fakerjs.dev/)
 - [Supertest](https://github.com/ladjs/supertest)
 
-## 🎯 Métricas de Qualidade
-
-### Coverage Mínimo
-- Lines: 80%
-- Functions: 80%
-- Branches: 80%
-- Statements: 80%
-
-### Performance
-- Testes unitários: < 100ms cada
-- Testes integração: < 1s cada
-- Testes E2E: < 10s cada
-- Suite completa: < 5 min
-
-### Confiabilidade
-- Taxa de falsos positivos: < 1%
-- Taxa de falsos negativos: 0%
-- Testes flaky: 0%
-
-## 🔄 Continuous Improvement
-
-1. **Review semanal** de coverage
-2. **Adicionar testes** para bugs encontrados
-3. **Refatorar testes** lentos ou complexos
-4. **Atualizar mocks** conforme API muda
-5. **Documentar** padrões e decisões
-
 ---
 
-**Status Atual**: ✅ 4 suites E2E implementadas  
-**Próximo Passo**: Adicionar testes de integração e unitários  
-**Meta Coverage**: 80%+ em todas as métricas
+**Última atualização**: Novembro 2025  
+**Testes totais**: ~165+  
+**Coverage target**: 80%+

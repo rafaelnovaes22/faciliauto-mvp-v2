@@ -272,8 +272,13 @@ Exemplos:
 
       return true;
     }).sort((a, b) => {
-      // Ordenar por ano (mais novo primeiro), depois por km (menor primeiro)
+      // Preço mais alto primeiro
+      const precoA = parseFloat(a.preco);
+      const precoB = parseFloat(b.preco);
+      if (precoB !== precoA) return precoB - precoA;
+      // Ano mais novo segundo
       if (b.ano !== a.ano) return b.ano - a.ano;
+      // Menos km terceiro
       return a.km - b.km;
     });
   }
@@ -369,7 +374,16 @@ Sugira as 3 melhores alternativas similares.`
    * Fallback para sugestões similares
    */
   private fallbackSimilarSuggestions(vehicles: any[], requestedModel: string): VehicleMatch[] {
-    return vehicles.slice(0, 3).map((vehicle, index) => ({
+    // Ordenar por preço (desc), km (asc), ano (desc)
+    const sortedVehicles = [...vehicles].sort((a, b) => {
+      const precoA = parseFloat(a.preco);
+      const precoB = parseFloat(b.preco);
+      if (precoB !== precoA) return precoB - precoA;
+      if (b.ano !== a.ano) return b.ano - a.ano;
+      return a.km - b.km;
+    });
+
+    return sortedVehicles.slice(0, 3).map((vehicle, index) => ({
       vehicle,
       matchScore: 70 - index * 5,
       reasoning: `⚠️ Não temos ${requestedModel} disponível. ${vehicle.marca} ${vehicle.modelo} pode ser uma alternativa.`,
@@ -391,6 +405,13 @@ Sugira as 3 melhores alternativas similares.`
       if (vehicle.ano < minYear) return false;
       if (vehicle.km > maxKm) return false;
       return true;
+    }).sort((a, b) => {
+      // Ordenar por preço (desc), km (asc), ano (desc)
+      const precoA = parseFloat(a.preco);
+      const precoB = parseFloat(b.preco);
+      if (precoB !== precoA) return precoB - precoA;
+      if (b.ano !== a.ano) return b.ano - a.ano;
+      return a.km - b.km;
     });
   }
 
