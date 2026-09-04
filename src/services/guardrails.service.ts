@@ -135,8 +135,8 @@ export class GuardrailsService {
     const injectionCheck = this.detectPromptInjection(message);
     if (!injectionCheck.allowed) {
       logger.warn(
-        { phoneNumber: maskPhoneNumber(phoneNumber), message },
-        'Prompt injection detected'
+        { phoneNumber: maskPhoneNumber(phoneNumber), detected: injectionCheck.detected ?? [], messageLength: message.length },
+        'Prompt injection detectado',
       );
       return injectionCheck;
     }
@@ -262,81 +262,105 @@ export class GuardrailsService {
   }
 
   /**
-   * Detect prompt injection attempts
+   * Detect prompt injection attempts.
+   * Lista nomeada PT-BR + EN: bloqueio deterministico antes de chamar o LLM
+   * e antes de enviar, com log estruturado JSON do padrao detectado (C6).
    */
-  private detectPromptInjection(message: string): GuardrailResult {
+  private detectPromptInjection(message: string): GuardrailResult & { detected?: string[] } {
     // Common prompt injection patterns
-    const injectionPatterns = [
+    const injectionPatterns: { name: string; pattern: RegExp }[] = [
       // System prompt manipulation (English)
       // "all previous instructions" is a compound qualifier — the original
       // single-word pattern let "ignore all previous instructions" through
       // (found by the adversarial golden dataset, 2026-07)
-      /ignore\s+(all\s+|the\s+)?(previous|above|all|prior|the)\s+(instructions|prompts|rules)/i,
-      /forget\s+(previous|above|all|the)\s+(instructions|prompts|rules)/i,
-      /disregard\s+(previous|above|all|the)\s+(instructions|prompts|rules)/i,
+      { name: "ignore_instructions_en", pattern: /ignore\s+(all\s+|the\s+)?(previous|above|all|prior|the)\s+(instructions|prompts|rules)/i },
+      { name: "forget_instructions_en", pattern: /forget\s+(all\s+|the\s+)?(previous|above|all|prior|the)\s+(instructions|prompts|rules)/i },
+      { name: "disregard_instructions_en", pattern: /disregard\s+(all\s+|the\s+)?(previous|above|all|prior|the)\s+(instructions|prompts|rules)/i },
+      { name: "ignore_everything_en", pattern: /ignore\s+everything/i },
 
       // System prompt manipulation (Portuguese)
-      /ignore\s+(as|todas)?\s*(instru[çc][õo]es|regras|prompts)/i,
-      /esque[çc]a\s+(as\s+|todas\s+|todas\s+as\s+)?(instru[çc][õo]es|regras)/i,
-      /desconsidere\s+(as|todas)?\s*(instru[çc][õo]es|regras)/i,
+      { name: "ignore_instrucoes_pt", pattern: /ignore\s+(as|todas)?\s*(instru[çc][õo]es|regras|prompts)/i },
+      { name: "esqueca_instrucoes_pt", pattern: /esque[çc]a\s+(as\s+|todas\s+|todas\s+as\s+)?(instru[çc][õo]es|regras)/i },
+      { name: "desconsidere_regras_pt", pattern: /desconsidere\s+(as|todas)?\s*(instru[çc][õo]es|regras)/i },
+      { name: "esqueca_tudo_pt", pattern: /esque[çc]a\s+tudo/i },
 
       // Role manipulation (English)
-      /you\s+are\s+now/i,
-      /you\s+are\s+(now\s+)?(a|an)\s+(admin|administrator|developer|system)/i,
-      /from\s+now\s+on/i,
-      /new\s+(instructions|role|prompt)/i,
-      /act\s+as\s+(a\s+)?(developer|admin|system)/i,
+      { name: "you_are_now_en", pattern: /you\s+are\s+now/i },
+      { name: "you_are_admin_en", pattern: /you\s+are\s+(now\s+)?(a|an)\s+(admin|administrator|developer|system)/i },
+      { name: "from_now_on_en", pattern: /from\s+now\s+on/i },
+      { name: "new_instructions_en", pattern: /new\s+(instructions|role|prompt)/i },
+      { name: "act_as_dev_en", pattern: /act\s+as\s+(a\s+)?(developer|admin|system)/i },
+      { name: "override_system_en", pattern: /override\s+(the\s+|your\s+)?(system|prompt|instructions)/i },
+      { name: "pretend_to_be_en", pattern: /pretend\s+(to\s+be|you\s+are)/i },
 
       // Role manipulation (Portuguese)
-      /voc[êe]\s+(agora\s+)?[ée]\s+(um|uma)\s+(admin|administrador|desenvolvedor|sistema)/i,
-      /a\s+partir\s+de\s+agora/i,
-      /nova\s+(instru[çc][ãa]o|regra|fun[çc][ãa]o)/i,
+      { name: "voce_agora_admin_pt", pattern: /voc[êe]\s+(agora\s+)?[ée]\s+(um|uma)\s+(admin|administrador|desenvolvedor|sistema)/i },
+      { name: "a_partir_de_agora_pt", pattern: /a\s+partir\s+de\s+agora/i },
+      { name: "nova_instrucao_pt", pattern: /nova\s+(instru[çc][ãa]o|regra|fun[çc][ãa]o)/i },
+      { name: "finja_que_voce_pt", pattern: /finja\s+que\s+voc[êe]/i },
+      { name: "me_de_acesso_pt", pattern: /me\s+d[êe]\s+(acesso|admin)/i },
 
       // Jailbreak attempts
-      /dan\s+mode/i,
-      /developer\s+mode/i,
-      /god\s+mode/i,
-      /jailbreak/i,
+      { name: "dan_mode", pattern: /dan\s+mode/i },
+      { name: "developer_mode", pattern: /developer\s+mode/i },
+      { name: "god_mode", pattern: /god\s+mode/i },
+      { name: "jailbreak", pattern: /jailbreak/i },
 
       // System command attempts
-      /system\s*:/i,
-      /assistant\s*:/i,
-      /\[system\]/i,
-      /\[assistant\]/i,
+      { name: "system_prefix", pattern: /system\s*:/i },
+      { name: "assistant_prefix", pattern: /assistant\s*:/i },
+      { name: "bracket_system", pattern: /\[system\]/i },
+      { name: "bracket_assistant", pattern: /\[assistant\]/i },
 
       // Encoding/obfuscation attempts
-      /base64/i,
-      /decode/i,
-      /\\x[0-9a-f]{2}/i,
-      /%[0-9a-f]{2}/i,
+      { name: "base64_obfuscation", pattern: /base64/i },
+      { name: "decode_attempt", pattern: /decode/i },
+      { name: "decodifique_pt", pattern: /decodifique/i },
+      { name: "hex_escape", pattern: /\\x[0-9a-f]{2}/i },
+      { name: "url_encoding", pattern: /%[0-9a-f]{2}/i },
 
       // Prompt extraction (English)
-      /show\s+(me\s+)?(your|the)\s+(prompt|instructions|system|rules)/i,
-      /what\s+(are|is)\s+(your|the)\s+(prompt|instructions|system|rules)/i,
-      /reveal\s+(your|the)\s+(prompt|instructions)/i,
-      /(tell|give)\s+me\s+(your|the)\s+(prompt|instructions)/i,
+      { name: "show_prompt_en", pattern: /show\s+(me\s+)?(your|the)\s+(prompt|instructions|system|rules)/i },
+      { name: "what_are_instructions_en", pattern: /what\s+(are|is)\s+(your|the)\s+(prompt|instructions|system|rules)/i },
+      { name: "reveal_prompt_en", pattern: /reveal\s+(your|the)\s+(prompt|instructions|system(\s+message)?)/i },
+      { name: "tell_me_prompt_en", pattern: /(tell|give)\s+me\s+(your|the)\s+(prompt|instructions)/i },
+      { name: "secret_extraction_en", pattern: /what\s+(is|are)\s+(your|the)\s+(api|secret|access)\s+(key|token)/i },
+      { name: "admin_access", pattern: /give\s+me\s+(admin|root|access)|me\s+d[êe]\s+(acesso|admin)/i },
+      { name: "disable_safety", pattern: /desative\s+(a\s+)?seguran[çc]a|disable\s+(the\s+)?(safety|security|filters?)/i },
+      { name: "sudo_mode", pattern: /sudo\s+mode|root\s+access/i },
 
       // Prompt extraction (Portuguese)
       // Plural possessives ("suas instruções") and articles ("o seu prompt")
       // broke the original patterns — both found by the adversarial golden
       // dataset probe (2026-07)
-      /me\s+(diga|mostre|revele)\s+(seus?|suas?|o|a|os|as)\s+(prompts?|instru[çc]([ãa]o|[õo]es)|sistema)/i,
-      /qual\s+([ée]|s[ãa]o)\s+(o\s+|a\s+|os\s+|as\s+)?(seus?|suas?|tuas?)\s+(instru[çc][õo]es?|prompts?|regras?)/i,
-      /sua\s+instru[çc][ãa]o/i,
+      { name: "me_diga_prompt_pt", pattern: /me\s+(diga|mostre|revele)\s+(o\s+|a\s+|os\s+|as\s+)?(seu\s+|sua\s+|seus\s+|suas\s+)?(prompts?|instru[çc]([ãa]o|[õo]es)|sistema)/i },
+      { name: "mostre_sistema_pt", pattern: /(me\s+)?mostre\s+(o\s+)?sistema/i },
+      { name: "qual_sua_instrucao_pt", pattern: /qual\s+([ée]|s[ãa]o)\s+(o\s+|a\s+|os\s+|as\s+)?(seus?|suas?|tuas?)\s+(instru[çc][õo]es?|prompts?|regras?)/i },
+      { name: "sua_instrucao_pt", pattern: /sua\s+instru[çc][ãa]o/i },
+      { name: "quais_suas_instrucoes_pt", pattern: /quais\s+s[ãa]o\s+(as\s+)?(suas\s+)?instru[çc][õo]es/i },
 
       // SQL injection patterns (extra safety)
-      /;\s*(drop|delete|insert|update)\s+/i,
-      /union\s+select/i,
-      /'.*or.*'.*=/i,
+      { name: "sql_drop", pattern: /;\s*(drop|delete|insert|update)\s+/i },
+      { name: "sql_union", pattern: /union\s+select/i },
+      { name: "sql_or_injection", pattern: /'.*or.*'.*=/i },
     ];
 
-    for (const pattern of injectionPatterns) {
+    const detected: string[] = [];
+    for (const { name, pattern } of injectionPatterns) {
       if (pattern.test(message)) {
-        return {
-          allowed: false,
-          reason: 'Desculpe, não entendi sua mensagem. Pode reformular?',
-        };
+        detected.push(name);
       }
+    }
+    if (detected.length > 0) {
+      logger.warn(
+        { phoneNumber: "masked", detected, count: detected.length },
+        "Prompt injection detectado",
+      );
+      return {
+        allowed: false,
+        reason: 'Desculpe, não entendi sua mensagem. Pode reformular?',
+        detected,
+      };
     }
 
     // Check for excessive special characters (possible obfuscation)
