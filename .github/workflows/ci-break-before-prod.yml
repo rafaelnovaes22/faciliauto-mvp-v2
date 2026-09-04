@@ -82,7 +82,19 @@ jobs:
   break-before-prod-gate:
     name: Break before prod gate
     runs-on: ubuntu-latest
-    needs: [lint, unit-test, eval-suite, iso-42001, secret-scan, docker-build, guardrails, injection, hallucination, cost]
+    needs:
+      [
+        lint,
+        unit-test,
+        eval-suite,
+        iso-42001,
+        secret-scan,
+        docker-build,
+        guardrails,
+        injection,
+        hallucination,
+        cost,
+      ]
     if: always()
     steps:
       - run: |

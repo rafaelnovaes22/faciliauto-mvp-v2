@@ -1,6 +1,23 @@
 {
-  "timestamp": "2026-09-04T00:04:06.096Z",
+  "timestamp": "2026-09-04T01:38:20.504Z",
   "results": [
+    {
+      "job": "guardrails",
+      "pass": true,
+      "patterns": 49
+    },
+    {
+      "job": "injection",
+      "pass": true,
+      "patterns": 49,
+      "probes": 36
+    },
+    {
+      "job": "hallucination",
+      "pass": true,
+      "accuracy": 1,
+      "total": 20
+    },
     {
       "job": "cost",
       "pass": true,
